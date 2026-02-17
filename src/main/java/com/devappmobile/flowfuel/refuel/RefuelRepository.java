@@ -12,29 +12,29 @@ import java.util.Optional;
 
 @Repository
 public interface RefuelRepository extends JpaRepository<Refuel, Long> {
-    
+
     List<Refuel> findByVehicleIdOrderByRefuelDateDesc(Long vehicleId);
-    
+
     List<Refuel> findByVehicleIdAndRefuelDateBetweenOrderByRefuelDateDesc(
-        Long vehicleId, LocalDateTime startDate, LocalDateTime endDate);
-    
+            Long vehicleId, LocalDateTime startDate, LocalDateTime endDate);
+
     Optional<Refuel> findTopByVehicleIdOrderByOdometerDesc(Long vehicleId);
-    
+
     Optional<Refuel> findTopByVehicleIdAndOdometerLessThanOrderByOdometerDesc(
-        Long vehicleId, Integer odometer);
-    
+            Long vehicleId, Integer odometer);
+
     boolean existsById(Long id);
-    
+
     List<Refuel> findByVehicleIdAndFullTankTrueOrderByRefuelDateDesc(Long vehicleId);
-    
+
     Optional<Refuel> findTopByVehicleIdOrderByRefuelDateDesc(Long vehicleId);
-    
+
     @Query("SELECT r FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.odometer BETWEEN :startOdometer AND :endOdometer ORDER BY r.odometer DESC")
     List<Refuel> findByVehicleIdAndOdometerBetween(
-        @Param("vehicleId") Long vehicleId,
-        @Param("startOdometer") Integer startOdometer,
-        @Param("endOdometer") Integer endOdometer);
-        
+            @Param("vehicleId") Long vehicleId,
+            @Param("startOdometer") Integer startOdometer,
+            @Param("endOdometer") Integer endOdometer);
+
     @Query("SELECT SUM(r.totalAmount) FROM Refuel r WHERE r.vehicle.id = :vehicleId")
     Optional<BigDecimal> getTotalSpentByVehicleId(@Param("vehicleId") Long vehicleId);
 
@@ -43,11 +43,34 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
 
     @Query("SELECT AVG(r.pricePerUnit) FROM Refuel r WHERE r.vehicle.id = :vehicleId")
     Optional<BigDecimal> getAveragePricePerUnitByVehicleId(@Param("vehicleId") Long vehicleId);
-    
+
     @Query("SELECT r FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.fullTank = true ORDER BY r.refuelDate DESC")
     List<Refuel> findFullTankRefuelsByVehicleId(@Param("vehicleId") Long vehicleId);
-    
+
     @Query("SELECT COUNT(r) FROM Refuel r WHERE r.vehicle.id = :vehicleId")
     Long countByVehicleId(@Param("vehicleId") Long vehicleId);
+
+    @Query("""
+                SELECT
+                    SUM(r.kmSinceLastRefuel) / SUM(r.energyAmount)
+                FROM Refuel r
+                WHERE r.vehicle.id = :vehicleId
+                AND r.fullTank = true
+            """)
+    Optional<Double> getAverageConsumptionByVehicleId(
+            @Param("vehicleId") Long vehicleId);
+    
+    @Query("""
+        SELECT SUM(r.totalAmount)
+        FROM Refuel r
+        WHERE r.vehicle.id = :vehicleId
+        AND MONTH(r.refuelDate) = :month
+        AND YEAR(r.refuelDate) = :year
+    """)
+    Optional<BigDecimal> getMonthlySpent(
+        @Param("vehicleId") Long vehicleId,
+        @Param("month") int month,
+        @Param("year") int year
+    );
 
 }
