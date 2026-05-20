@@ -56,19 +56,4 @@ public class Refuel {
         }
     }
 
-    public BigDecimal getLitersRefueled() {
-        return energyAmount; // Para compatibilidade com código existente
-    }
-
-    public void setLitersRefueled(BigDecimal liters) {
-        this.energyAmount = liters; // Para compatibilidade
-    }
-
-    public BigDecimal getPricePerLiter() {
-        return pricePerUnit; // Para compatibilidade
-    }
-
-    public void setPricePerLiter(BigDecimal price) {
-        this.pricePerUnit = price; // Para compatibilidade
-    }
 }

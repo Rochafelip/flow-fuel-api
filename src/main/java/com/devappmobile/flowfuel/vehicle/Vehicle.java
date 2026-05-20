@@ -73,32 +73,20 @@ public class Vehicle {
     @OneToMany(mappedBy = "vehicle", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Refuel> refuels = new ArrayList<>();
 
-    public Integer getTankCapacity() {
-        return capacity;
-    }
-
-    public void setTankCapacity(Integer capacity) {
-        this.capacity = capacity;
-    }
-
-    public String getFuelType() {
-        return fuelSubType;
-    }
-
-    public void setFuelType(String fuelType) {
-        this.fuelSubType = fuelType;
-    }
-
     public boolean isElectric() {
         return energyType != null && energyType.isElectric();
     }
 
     public String getEnergyUnit() {
-        return isElectric() ? "kWh" : "litros";
+        return energyType != null ? energyType.getEnergyUnit() : "litros";
     }
 
     public String getPriceUnit() {
-        return isElectric() ? "R$/kWh" : "R$/litro";
+        return energyType != null ? energyType.getPriceUnit() : "R$/litro";
+    }
+
+    public String getConsumptionUnit() {
+        return energyType != null ? energyType.getConsumptionUnit() : "km/L";
     }
 
     public void addRefuel(Refuel refuel) {

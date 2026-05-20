@@ -1,7 +1,11 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.config.JwtUtil;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.Optional;
@@ -9,34 +13,38 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class UserService {
-    
+
     private final UserRepository userRepository;
-    
+    private final JwtUtil jwtUtil;
+    private final PasswordEncoder passwordEncoder;
+
     public ResponseEntity<?> register(User user) {
-        // RF001.1 - Cadastro com validações
-        // Validar email único
         if (userRepository.findByEmail(user.getEmail()).isPresent()) {
             return ResponseEntity.badRequest().body("Email já cadastrado");
         }
-        
-        // Validar senha mínima 6 caracteres
+
         if (user.getPassword().length() < 6) {
             return ResponseEntity.badRequest().body("Senha deve ter pelo menos 6 caracteres");
         }
-        
+
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         User savedUser = userRepository.save(user);
         return ResponseEntity.ok(savedUser);
     }
-    
+
     public ResponseEntity<?> login(String email, String password) {
-        // RF001.2 - Login
         Optional<User> user = userRepository.findByEmail(email);
-        if (user.isPresent() && user.get().getPassword().equals(password)) {
-            return ResponseEntity.ok(user.get());
+
+        if (user.isEmpty() || !passwordEncoder.matches(password, user.get().getPassword())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Email ou senha inválidos");
         }
-        return ResponseEntity.badRequest().body("Email ou senha inválidos");
+
+        User foundUser = user.get();
+        String token = jwtUtil.generateToken(foundUser.getEmail(), foundUser.getId());
+
+        return ResponseEntity.ok(new LoginResponse(token));
     }
-    
     public ResponseEntity<?> sendPasswordReset(String email) {
         // RF001.2 - Recuperação de senha
         Optional<User> user = userRepository.findByEmail(email);

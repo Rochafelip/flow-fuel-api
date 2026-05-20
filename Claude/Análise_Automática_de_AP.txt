@@ -1,0 +1,251 @@
+# README — Análise Automática de API REST com Claude
+
+## Objetivo
+
+Você deve analisar completamente este repositório backend e gerar uma documentação técnica detalhada da API REST.
+
+O objetivo é:
+- entender a arquitetura do projeto
+- mapear endpoints
+- identificar autenticação
+- explicar regras de negócio
+- documentar entidades
+- identificar padrões arquiteturais
+- gerar documentação clara para desenvolvedores
+
+---
+
+# O que deve ser analisado
+
+## Estrutura do projeto
+Analise:
+- organização de pastas
+- arquitetura utilizada
+- padrões adotados
+- separação de responsabilidades
+- camadas da aplicação
+
+Explique:
+- controllers
+- services
+- repositories
+- DTOs
+- entities/models
+- middlewares/filters
+- configs
+- exceptions
+- security
+
+---
+
+# Tecnologias utilizadas
+
+Identifique:
+- linguagem
+- framework
+- banco de dados
+- ORM
+- bibliotecas principais
+- autenticação
+- ferramentas auxiliares
+
+Exemplo:
+- Spring Boot
+- Rails
+- Laravel
+- PostgreSQL
+- JWT
+- Redis
+- Docker
+- Swagger/OpenAPI
+
+---
+
+# Documentação completa da API
+
+Para CADA endpoint encontrado, documente:
+
+## Endpoint
+```http
+GET /users
+Descrição
+
+Explique o objetivo da rota.
+
+Autenticação
+
+Informe:
+
+pública
+JWT
+bearer token
+admin
+roles
+Request
+Headers
+Authorization: Bearer TOKEN
+Content-Type: application/json
+Body
+{
+  "name": "John Doe"
+}
+Params
+/users/{id}
+Query Params
+?page=1&limit=10
+Response
+Success
+{
+  "id": 1,
+  "name": "John Doe"
+}
+Errors
+{
+  "message": "Unauthorized"
+}
+Entidades do sistema
+
+Documente:
+
+models/entities
+relacionamentos
+regras
+validações
+enums
+
+Explique:
+
+OneToMany
+ManyToOne
+ManyToMany
+constraints
+regras importantes
+Fluxos do sistema
+
+Explique:
+
+autenticação
+login
+cadastro
+refresh token
+permissões
+fluxo principal da aplicação
+Segurança
+
+Identifique:
+
+JWT
+OAuth
+Spring Security
+Devise
+CORS
+roles/permissões
+
+Explique:
+
+como funciona
+riscos encontrados
+melhorias possíveis
+Banco de dados
+
+Documente:
+
+tabelas principais
+relacionamentos
+migrations
+estratégia de persistência
+Arquitetura
+
+Explique:
+
+MVC
+Clean Architecture
+Hexagonal
+DDD
+Repository Pattern
+Service Layer
+
+Se houver.
+
+Qualidade do código
+
+Analise:
+
+organização
+legibilidade
+duplicações
+boas práticas
+SOLID
+naming
+acoplamento
+Melhorias sugeridas
+
+Sugira:
+
+melhorias arquiteturais
+performance
+segurança
+organização
+documentação
+testes
+padronização
+Testes
+
+Identifique:
+
+testes unitários
+integração
+e2e
+cobertura
+
+Explique como executar.
+
+Como rodar o projeto
+
+Documente:
+
+instalação
+dependências
+variáveis de ambiente
+Docker
+banco
+comandos
+
+Exemplo:
+
+docker-compose up
+./mvnw spring-boot:run
+Resultado esperado
+
+Gerar:
+
+1. Documento técnico completo
+
+Com explicação detalhada da API.
+
+2. Mapeamento completo de endpoints
+3. Explicação da arquitetura
+4. Guia para novos desenvolvedores
+5. Possíveis melhorias
+Formato da resposta
+
+A documentação deve:
+
+ser extremamente organizada
+usar markdown
+conter exemplos reais
+conter tabelas
+conter fluxos
+conter exemplos de request/response
+ser legível para novos desenvolvedores
+Instruções importantes
+Analise o projeto inteiro antes de documentar.
+Não assuma comportamento sem verificar o código.
+Explique regras implícitas encontradas.
+Cite inconsistências encontradas.
+Identifique endpoints não utilizados.
+Identifique código morto se houver.
+Explique dependências importantes.
+Explique fluxo de autenticação detalhadamente.
+Explique relações entre entidades.
+Gere documentação como se fosse para onboarding técnico de uma equipe.

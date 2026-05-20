@@ -59,18 +59,17 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
             """)
     Optional<Double> getAverageConsumptionByVehicleId(
             @Param("vehicleId") Long vehicleId);
-    
+
     @Query("""
-        SELECT SUM(r.totalAmount)
-        FROM Refuel r
-        WHERE r.vehicle.id = :vehicleId
-        AND MONTH(r.refuelDate) = :month
-        AND YEAR(r.refuelDate) = :year
-    """)
+                SELECT SUM(r.totalAmount)
+                FROM Refuel r
+                WHERE r.vehicle.id = :vehicleId
+                AND MONTH(r.refuelDate) = :month
+                AND YEAR(r.refuelDate) = :year
+            """)
     Optional<BigDecimal> getMonthlySpent(
-        @Param("vehicleId") Long vehicleId,
-        @Param("month") int month,
-        @Param("year") int year
-    );
+            @Param("vehicleId") Long vehicleId,
+            @Param("month") int month,
+            @Param("year") int year);
 
 }

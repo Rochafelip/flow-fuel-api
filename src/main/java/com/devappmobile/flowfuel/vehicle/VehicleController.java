@@ -1,8 +1,13 @@
 package com.devappmobile.flowfuel.vehicle;
 
+import com.devappmobile.flowfuel.user.User;
+import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
 @RestController
@@ -10,62 +15,60 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class VehicleController {
-    
+
     private final VehicleService vehicleService;
-    
+
     @PostMapping
-    public ResponseEntity<Vehicle> createVehicle(
-            @RequestHeader Long userId, 
-            @RequestBody Vehicle vehicle) {
-        return vehicleService.createVehicle(userId, vehicle);
+    public ResponseEntity<?> createVehicle(
+            @AuthenticationPrincipal User user,
+            @Valid @RequestBody VehicleRequestDTO request) {
+        return vehicleService.createVehicle(user, request);
     }
-    
+
     @GetMapping
-    public ResponseEntity<List<Vehicle>> getUserVehicles(@RequestHeader Long userId) {
-        return vehicleService.getUserVehicles(userId);
+    public ResponseEntity<List<Vehicle>> getUserVehicles(@AuthenticationPrincipal User user) {
+        return vehicleService.getUserVehicles(user);
     }
-    
+
+    @GetMapping("/active")
+    public ResponseEntity<Vehicle> getActiveVehicle(@AuthenticationPrincipal User user) {
+        return vehicleService.getActiveVehicle(user);
+    }
+
     @GetMapping("/{id}")
-    public ResponseEntity<Vehicle> getVehicle(@PathVariable Long id) {
-        return vehicleService.getVehicleById(id);
+    public ResponseEntity<Vehicle> getVehicle(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id) {
+        return vehicleService.getVehicleById(user, id);
     }
-    
+
     @PutMapping("/{id}")
     public ResponseEntity<Vehicle> updateVehicle(
-            @PathVariable Long id, 
-            @RequestBody Vehicle vehicle) {
-        return vehicleService.updateVehicle(id, vehicle);
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id,
+            @Valid @RequestBody VehicleRequestDTO request) {
+        return vehicleService.updateVehicle(user, id, request);
     }
-    
+
     @PutMapping("/{id}/odometer")
     public ResponseEntity<Vehicle> updateOdometer(
-            @PathVariable Long id, 
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id,
             @RequestParam Integer currentKm) {
-        return vehicleService.updateOdometer(id, currentKm);
+        return vehicleService.updateOdometer(user, id, currentKm);
     }
-    
+
     @PutMapping("/{id}/active")
     public ResponseEntity<?> setActiveVehicle(
-            @RequestHeader Long userId, 
+            @AuthenticationPrincipal User user,
             @PathVariable Long id) {
-        return vehicleService.setActiveVehicle(userId, id);
+        return vehicleService.setActiveVehicle(user, id);
     }
-    
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteVehicle(@PathVariable Long id) {
-        return vehicleService.deleteVehicle(id);
-    }
-    
-    @GetMapping("/active")
-    public ResponseEntity<Vehicle> getActiveVehicle(@RequestHeader Long userId) {
-        List<Vehicle> vehicles = vehicleService.getUserVehicles(userId).getBody();
-        if (vehicles != null) {
-            Vehicle activeVehicle = vehicles.stream()
-                    .filter(Vehicle::getIsActive)
-                    .findFirst()
-                    .orElse(null);
-            return activeVehicle != null ? ResponseEntity.ok(activeVehicle) : ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<?> deleteVehicle(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id) {
+        return vehicleService.deleteVehicle(user, id);
     }
 }

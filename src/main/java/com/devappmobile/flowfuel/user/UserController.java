@@ -1,6 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -20,7 +21,21 @@ public class UserController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
-        return userService.login(loginRequest.getEmail(), loginRequest.getPassword());
+        ResponseEntity<?> response = userService.login(loginRequest.getEmail(), loginRequest.getPassword());
+        
+        // Se login foi bem-sucedido (200), adicionar header Authorization
+        if (response.getStatusCode().is2xxSuccessful()) {
+            LoginResponse loginResponse = (LoginResponse) response.getBody();
+            if (loginResponse != null) {
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + loginResponse.getToken());
+                return ResponseEntity.ok()
+                        .headers(headers)
+                        .body(loginResponse);
+            }
+        }
+        
+        return response;
     }
 
     @PostMapping("/{userId}/upload-profile-picture")
