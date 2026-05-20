@@ -34,12 +34,12 @@ class DashboardControllerIntegrationTest {
     }
 
     private String obterToken(String email) throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123","name":"User"}
                         """.formatted(email)));
-        MvcResult result = mockMvc.perform(post("/api/auth/login")
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123"}
@@ -49,7 +49,7 @@ class DashboardControllerIntegrationTest {
     }
 
     private long criarVeiculo(String token) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/vehicles")
+        MvcResult result = mockMvc.perform(post("/api/v1/vehicles")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -61,7 +61,7 @@ class DashboardControllerIntegrationTest {
     }
 
     private void criarAbastecimento(String token, long vehicleId, int odometer) throws Exception {
-        mockMvc.perform(post("/api/refuels")
+        mockMvc.perform(post("/api/v1/refuels")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -78,7 +78,7 @@ class DashboardControllerIntegrationTest {
 
     @Test
     void getDashboard_semToken_retorna401() throws Exception {
-        mockMvc.perform(get("/api/dashboard/vehicle/1"))
+        mockMvc.perform(get("/api/v1/dashboard/vehicle/1"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -88,7 +88,7 @@ class DashboardControllerIntegrationTest {
         long vehicleId = criarVeiculo(token);
         criarAbastecimento(token, vehicleId, 50500);
 
-        mockMvc.perform(get("/api/dashboard/vehicle/{id}", vehicleId)
+        mockMvc.perform(get("/api/v1/dashboard/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.vehicleId").value(vehicleId))
@@ -103,7 +103,7 @@ class DashboardControllerIntegrationTest {
         String tokenB = obterToken("dashB@test.com");
         long vehicleIdA = criarVeiculo(tokenA);
 
-        mockMvc.perform(get("/api/dashboard/vehicle/{id}", vehicleIdA)
+        mockMvc.perform(get("/api/v1/dashboard/vehicle/{id}", vehicleIdA)
                 .header("Authorization", "Bearer " + tokenB))
                 .andExpect(status().isForbidden());
     }
@@ -115,7 +115,7 @@ class DashboardControllerIntegrationTest {
         criarAbastecimento(token, vehicleId, 50500);
         criarAbastecimento(token, vehicleId, 51000);
 
-        mockMvc.perform(get("/api/dashboard/vehicle/{id}", vehicleId)
+        mockMvc.perform(get("/api/v1/dashboard/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalRefuels").value(2))
@@ -126,7 +126,7 @@ class DashboardControllerIntegrationTest {
     void getDashboard_veiculoInexistente_retorna404() throws Exception {
         String token = obterToken("404dash@test.com");
 
-        mockMvc.perform(get("/api/dashboard/vehicle/99999")
+        mockMvc.perform(get("/api/v1/dashboard/vehicle/99999")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound());
     }

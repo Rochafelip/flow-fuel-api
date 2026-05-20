@@ -30,8 +30,8 @@ public class Vehicle {
     @Column(nullable = false)
     private String type;
 
-    @Enumerated(EnumType.ORDINAL)
-    @Column(name = "energy_type", nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "energy_type", nullable = false, length = 20)
     private EnergyType energyType;
 
     @Column(name = "fuel_sub_type")

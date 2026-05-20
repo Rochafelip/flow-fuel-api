@@ -1,47 +1,49 @@
 package com.devappmobile.flowfuel.refuel;
 
+import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.util.List;
 
 @RestController
-@RequestMapping("/api/refuels")
+@RequestMapping("/refuels")
 @RequiredArgsConstructor
 public class RefuelController {
 
     private final RefuelService refuelService;
 
     @PostMapping
-    public ResponseEntity<Refuel> createRefuel(
+    public RefuelResponseDTO createRefuel(
             @AuthenticationPrincipal User user,
             @Valid @RequestBody RefuelRequestDTO request) {
         return refuelService.createRefuel(user, request);
     }
 
     @GetMapping("/vehicle/{vehicleId}")
-    public ResponseEntity<List<Refuel>> getVehicleRefuels(
+    public PageResponseDTO<RefuelResponseDTO> getVehicleRefuels(
             @AuthenticationPrincipal User user,
             @PathVariable Long vehicleId,
             @RequestParam(required = false) LocalDate startDate,
-            @RequestParam(required = false) LocalDate endDate) {
-        return refuelService.getVehicleRefuels(user, vehicleId, startDate, endDate);
+            @RequestParam(required = false) LocalDate endDate,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return refuelService.getVehicleRefuels(user, vehicleId, startDate, endDate, pageable);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Refuel> getRefuel(
+    public RefuelResponseDTO getRefuel(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
         return refuelService.getRefuelById(user, id);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Refuel> updateRefuel(
+    public RefuelResponseDTO updateRefuel(
             @AuthenticationPrincipal User user,
             @PathVariable Long id,
             @Valid @RequestBody RefuelRequestDTO request) {
@@ -49,9 +51,9 @@ public class RefuelController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteRefuel(
+    public void deleteRefuel(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
-        return refuelService.deleteRefuel(user, id);
+        refuelService.deleteRefuel(user, id);
     }
 }

@@ -1,13 +1,13 @@
 package com.devappmobile.flowfuel.dashboard;
 
+import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
+import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,37 +23,30 @@ public class DashboardService {
     private final RefuelRepository refuelRepository;
     private final VehicleRepository vehicleRepository;
 
-    public ResponseEntity<DashboardDTO> getVehicleDashboard(User user, Long vehicleId) {
-        Optional<Vehicle> vehicleOpt = vehicleRepository.findById(vehicleId);
-        if (vehicleOpt.isEmpty()) return ResponseEntity.notFound().build();
-        if (!vehicleOpt.get().getUser().getId().equals(user.getId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    public DashboardDTO getVehicleDashboard(User user, Long vehicleId) {
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
+        if (!vehicle.getUser().getId().equals(user.getId())) {
+            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
         }
-
-        return ResponseEntity.ok(buildDashboard(vehicleId));
+        return buildDashboard(vehicleId);
     }
 
     private DashboardDTO buildDashboard(Long vehicleId) {
-
-        // 🔹 Total de abastecimentos
         Long totalRefuels = refuelRepository.countByVehicleId(vehicleId);
 
-        // 🔹 Total gasto
         BigDecimal totalSpent = refuelRepository
                 .getTotalSpentByVehicleId(vehicleId)
                 .orElse(BigDecimal.ZERO);
 
-        // 🔹 Total abastecido
         BigDecimal totalEnergy = refuelRepository
                 .getTotalEnergyByVehicleId(vehicleId)
                 .orElse(BigDecimal.ZERO);
 
-        // 🔹 Média de preço
         BigDecimal averagePrice = refuelRepository
                 .getAveragePricePerUnitByVehicleId(vehicleId)
                 .orElse(BigDecimal.ZERO);
 
-        // 🔹 Último abastecimento
         Optional<Refuel> lastRefuelOpt =
                 refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(vehicleId);
 
@@ -66,7 +59,6 @@ public class DashboardService {
             lastOdometer = lastRefuel.getOdometer();
         }
 
-        // 🔹 Consumo médio (km/l)
         Double averageConsumption = calculateAverageConsumption(vehicleId);
 
         return DashboardDTO.builder()
@@ -82,7 +74,6 @@ public class DashboardService {
     }
 
     private Double calculateAverageConsumption(Long vehicleId) {
-
         List<Refuel> fullRefuels =
                 refuelRepository.findFullTankRefuelsByVehicleId(vehicleId);
 

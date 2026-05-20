@@ -29,7 +29,7 @@ class UserControllerIntegrationTest {
     }
 
     private MvcResult registrar(String email, String password) throws Exception {
-        return mockMvc.perform(post("/api/auth/register")
+        return mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"%s","name":"Teste"}
@@ -39,7 +39,7 @@ class UserControllerIntegrationTest {
 
     private String obterToken(String email, String password) throws Exception {
         registrar(email, password);
-        MvcResult result = mockMvc.perform(post("/api/auth/login")
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"%s"}
@@ -51,7 +51,7 @@ class UserControllerIntegrationTest {
 
     @Test
     void register_comDadosValidos_retorna200ECorpoSemSenha() throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/auth/register")
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"novo@test.com","password":"senha123","name":"Novo"}
@@ -66,20 +66,20 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void register_comEmailDuplicado_retorna400() throws Exception {
+    void register_comEmailDuplicado_retorna409() throws Exception {
         registrar("dup@test.com", "senha123");
 
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"dup@test.com","password":"outrasenha"}
                         """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
     }
 
     @Test
     void register_comSenhaCurta_retorna400() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"curta@test.com","password":"abc"}
@@ -91,7 +91,7 @@ class UserControllerIntegrationTest {
     void login_comCredenciaisValidas_retornaTokenNoCorpo() throws Exception {
         registrar("login@test.com", "senha123");
 
-        MvcResult result = mockMvc.perform(post("/api/auth/login")
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"login@test.com","password":"senha123"}
@@ -107,7 +107,7 @@ class UserControllerIntegrationTest {
     void login_comSenhaErrada_retorna401() throws Exception {
         registrar("errada@test.com", "senha123");
 
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"errada@test.com","password":"senhaerrada"}
@@ -121,7 +121,7 @@ class UserControllerIntegrationTest {
         long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
         String token = obterToken("perfil@test.com", "senha123");
 
-        MvcResult result = mockMvc.perform(get("/api/auth/{id}/profile", userId)
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/{id}/profile", userId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -133,8 +133,60 @@ class UserControllerIntegrationTest {
 
     @Test
     void getProfile_semToken_retorna401() throws Exception {
-        mockMvc.perform(get("/api/auth/1/profile"))
+        mockMvc.perform(get("/api/v1/auth/1/profile"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getProfile_deOutroUsuario_retorna403() throws Exception {
+        MvcResult registerA = registrar("a@test.com", "senha123");
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
+        String tokenB = obterToken("b@test.com", "senha123");
+
+        mockMvc.perform(get("/api/v1/auth/{id}/profile", userIdA)
+                .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void updateProfile_deOutroUsuario_retorna403() throws Exception {
+        MvcResult registerA = registrar("a2@test.com", "senha123");
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
+        String tokenB = obterToken("b2@test.com", "senha123");
+
+        mockMvc.perform(put("/api/v1/auth/{id}/profile", userIdA)
+                .header("Authorization", "Bearer " + tokenB)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"name":"Hacker"}
+                        """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteUser_deOutroUsuario_retorna403ENaoRemove() throws Exception {
+        MvcResult registerA = registrar("a3@test.com", "senha123");
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
+        String tokenB = obterToken("b3@test.com", "senha123");
+
+        mockMvc.perform(delete("/api/v1/auth/{id}", userIdA)
+                .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isForbidden());
+
+        assertThat(userRepository.existsById(userIdA)).isTrue();
+    }
+
+    @Test
+    void uploadProfilePicture_deOutroUsuario_retorna403() throws Exception {
+        MvcResult registerA = registrar("a4@test.com", "senha123");
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
+        String tokenB = obterToken("b4@test.com", "senha123");
+
+        mockMvc.perform(multipart("/api/v1/auth/{id}/upload-profile-picture", userIdA)
+                .file(new org.springframework.mock.web.MockMultipartFile(
+                        "file", "x.png", "image/png", new byte[] { 1, 2, 3 }))
+                .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -143,7 +195,7 @@ class UserControllerIntegrationTest {
         long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
         String token = obterToken("del@test.com", "senha123");
 
-        mockMvc.perform(delete("/api/auth/{id}", userId)
+        mockMvc.perform(delete("/api/v1/auth/{id}", userId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
 

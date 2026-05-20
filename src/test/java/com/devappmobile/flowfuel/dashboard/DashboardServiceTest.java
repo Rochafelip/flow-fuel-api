@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.dashboard;
 
+import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
+import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.devappmobile.flowfuel.user.User;
@@ -11,8 +13,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,24 +48,20 @@ class DashboardServiceTest {
         vehicle.setUser(owner);
     }
 
-    // --- getVehicleDashboard ---
-
     @Test
-    void getVehicleDashboard_veiculoInexistente_retorna404() {
+    void getVehicleDashboard_veiculoInexistente_lancaResourceNotFound() {
         when(vehicleRepository.findById(99L)).thenReturn(Optional.empty());
 
-        ResponseEntity<DashboardDTO> response = dashboardService.getVehicleDashboard(owner, 99L);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThatThrownBy(() -> dashboardService.getVehicleDashboard(owner, 99L))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void getVehicleDashboard_usuarioNaoEDono_retorna403() {
+    void getVehicleDashboard_usuarioNaoEDono_lancaForbidden() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        ResponseEntity<DashboardDTO> response = dashboardService.getVehicleDashboard(otherUser, 10L);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThatThrownBy(() -> dashboardService.getVehicleDashboard(otherUser, 10L))
+                .isInstanceOf(ForbiddenOperationException.class);
     }
 
     @Test
@@ -77,10 +74,8 @@ class DashboardServiceTest {
         when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
         when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
 
-        ResponseEntity<DashboardDTO> response = dashboardService.getVehicleDashboard(owner, 10L);
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        DashboardDTO body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.getTotalRefuels()).isEqualTo(0L);
         assertThat(body.getTotalSpent()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -97,10 +92,8 @@ class DashboardServiceTest {
         when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
         when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
 
-        ResponseEntity<DashboardDTO> response = dashboardService.getVehicleDashboard(owner, 10L);
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        DashboardDTO body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.getTotalRefuels()).isEqualTo(5L);
         assertThat(body.getTotalSpent()).isEqualByComparingTo(BigDecimal.valueOf(1500.00));
@@ -109,7 +102,6 @@ class DashboardServiceTest {
 
     @Test
     void getVehicleDashboard_comDoisTanquesCheios_calculaConsumoMedio() {
-        // Refuels ordenados DESC por data: mais recente primeiro
         Refuel recent = new Refuel();
         recent.setOdometer(2000);
         recent.setEnergyAmount(BigDecimal.valueOf(50.0));
@@ -130,12 +122,9 @@ class DashboardServiceTest {
         when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.of(recent));
         when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of(recent, older));
 
-        ResponseEntity<DashboardDTO> response = dashboardService.getVehicleDashboard(owner, 10L);
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        DashboardDTO body = response.getBody();
         assertThat(body).isNotNull();
-        // consumo = (2000 - 1500) / 50.0 = 10.0 km/L
         assertThat(body.getAverageConsumption()).isEqualTo(10.0);
     }
 
@@ -155,9 +144,9 @@ class DashboardServiceTest {
         when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.of(singleRefuel));
         when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of(singleRefuel));
 
-        ResponseEntity<DashboardDTO> response = dashboardService.getVehicleDashboard(owner, 10L);
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
 
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getAverageConsumption()).isEqualTo(0.0);
+        assertThat(body).isNotNull();
+        assertThat(body.getAverageConsumption()).isEqualTo(0.0);
     }
 }

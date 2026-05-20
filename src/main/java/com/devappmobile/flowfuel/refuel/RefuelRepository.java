@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.refuel;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,8 +17,13 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
 
     List<Refuel> findByVehicleIdOrderByRefuelDateDesc(Long vehicleId);
 
+    Page<Refuel> findByVehicleIdOrderByRefuelDateDesc(Long vehicleId, Pageable pageable);
+
     List<Refuel> findByVehicleIdAndRefuelDateBetweenOrderByRefuelDateDesc(
             Long vehicleId, LocalDateTime startDate, LocalDateTime endDate);
+
+    Page<Refuel> findByVehicleIdAndRefuelDateBetweenOrderByRefuelDateDesc(
+            Long vehicleId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
 
     Optional<Refuel> findTopByVehicleIdOrderByOdometerDesc(Long vehicleId);
 

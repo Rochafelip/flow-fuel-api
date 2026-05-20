@@ -1,15 +1,18 @@
 package com.devappmobile.flowfuel.vehicle;
 
+import com.devappmobile.flowfuel.common.PageResponseDTO;
+import com.devappmobile.flowfuel.exception.BusinessRuleException;
+import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
+import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.user.UserRepository;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
+import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -18,75 +21,58 @@ public class VehicleService {
     private final VehicleRepository vehicleRepository;
     private final UserRepository userRepository;
 
-    public ResponseEntity<?> createVehicle(User user, VehicleRequestDTO request) {
+    public VehicleResponseDTO createVehicle(User user, VehicleRequestDTO request) {
         Vehicle vehicle = new Vehicle();
         applyRequestToVehicle(vehicle, request);
         vehicle.setUser(user);
-
-        return ResponseEntity.ok(vehicleRepository.save(vehicle));
+        return VehicleResponseDTO.from(vehicleRepository.save(vehicle));
     }
 
-    public ResponseEntity<List<Vehicle>> getUserVehicles(User user) {
-        return ResponseEntity.ok(vehicleRepository.findByUserId(user.getId()));
+    public PageResponseDTO<VehicleResponseDTO> getUserVehicles(User user, Pageable pageable) {
+        return PageResponseDTO.from(
+                vehicleRepository.findByUserId(user.getId(), pageable),
+                VehicleResponseDTO::from);
     }
 
-    public ResponseEntity<Vehicle> getActiveVehicle(User user) {
+    public VehicleResponseDTO getActiveVehicle(User user) {
         return vehicleRepository.findByUserId(user.getId()).stream()
                 .filter(Vehicle::getIsActive)
                 .findFirst()
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .map(VehicleResponseDTO::from)
+                .orElseThrow(() -> new ResourceNotFoundException("Nenhum veículo ativo encontrado"));
     }
 
-    public ResponseEntity<Vehicle> getVehicleById(User user, Long id) {
-        Optional<Vehicle> vehicle = vehicleRepository.findById(id);
-        if (vehicle.isEmpty()) return ResponseEntity.notFound().build();
-        if (!ownsVehicle(user, vehicle.get())) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        return ResponseEntity.ok(vehicle.get());
+    public VehicleResponseDTO getVehicleById(User user, Long id) {
+        Vehicle vehicle = findOwned(user, id);
+        return VehicleResponseDTO.from(vehicle);
     }
 
-    public ResponseEntity<Vehicle> updateVehicle(User user, Long id, VehicleRequestDTO request) {
-        Optional<Vehicle> vehicleOptional = vehicleRepository.findById(id);
-        if (vehicleOptional.isEmpty()) return ResponseEntity.notFound().build();
-
-        Vehicle vehicle = vehicleOptional.get();
-        if (!ownsVehicle(user, vehicle)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-
+    public VehicleResponseDTO updateVehicle(User user, Long id, VehicleRequestDTO request) {
+        Vehicle vehicle = findOwned(user, id);
         applyRequestToVehicle(vehicle, request);
-        return ResponseEntity.ok(vehicleRepository.save(vehicle));
+        return VehicleResponseDTO.from(vehicleRepository.save(vehicle));
     }
 
-    public ResponseEntity<Vehicle> updateOdometer(User user, Long id, Integer currentKm) {
-        Optional<Vehicle> vehicleOptional = vehicleRepository.findById(id);
-        if (vehicleOptional.isEmpty()) return ResponseEntity.notFound().build();
-
-        Vehicle vehicle = vehicleOptional.get();
-        if (!ownsVehicle(user, vehicle)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        if (currentKm < vehicle.getCurrentKm()) return ResponseEntity.badRequest().build();
-
+    public VehicleResponseDTO updateOdometer(User user, Long id, Integer currentKm) {
+        Vehicle vehicle = findOwned(user, id);
+        if (currentKm < vehicle.getCurrentKm()) {
+            throw new BusinessRuleException("Odômetro não pode ser menor que o atual");
+        }
         vehicle.setCurrentKm(currentKm);
-        return ResponseEntity.ok(vehicleRepository.save(vehicle));
+        return VehicleResponseDTO.from(vehicleRepository.save(vehicle));
     }
 
-    public ResponseEntity<?> setActiveVehicle(User user, Long vehicleId) {
-        Optional<Vehicle> vehicleOpt = vehicleRepository.findById(vehicleId);
-        if (vehicleOpt.isEmpty()) return ResponseEntity.notFound().build();
-        if (!ownsVehicle(user, vehicleOpt.get())) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    public void setActiveVehicle(User user, Long vehicleId) {
+        findOwned(user, vehicleId);
 
         List<Vehicle> userVehicles = vehicleRepository.findByUserId(user.getId());
         userVehicles.forEach(v -> v.setIsActive(v.getId().equals(vehicleId)));
         vehicleRepository.saveAll(userVehicles);
-
-        return ResponseEntity.ok().build();
     }
 
-    public ResponseEntity<?> deleteVehicle(User user, Long id) {
-        Optional<Vehicle> vehicleOpt = vehicleRepository.findById(id);
-        if (vehicleOpt.isEmpty()) return ResponseEntity.notFound().build();
-        if (!ownsVehicle(user, vehicleOpt.get())) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-
+    public void deleteVehicle(User user, Long id) {
+        findOwned(user, id);
         vehicleRepository.deleteById(id);
-        return ResponseEntity.ok().build();
     }
 
     public String getConsumptionUnit(Vehicle vehicle) {
@@ -98,8 +84,13 @@ public class VehicleService {
         return (double) km / energy;
     }
 
-    private boolean ownsVehicle(User user, Vehicle vehicle) {
-        return vehicle.getUser().getId().equals(user.getId());
+    private Vehicle findOwned(User user, Long id) {
+        Vehicle vehicle = vehicleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Veículo", id));
+        if (!vehicle.getUser().getId().equals(user.getId())) {
+            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
+        }
+        return vehicle;
     }
 
     private void applyRequestToVehicle(Vehicle vehicle, VehicleRequestDTO request) {

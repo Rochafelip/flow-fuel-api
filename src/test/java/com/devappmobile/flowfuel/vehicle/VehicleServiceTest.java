@@ -1,21 +1,29 @@
 package com.devappmobile.flowfuel.vehicle;
 
+import com.devappmobile.flowfuel.common.PageResponseDTO;
+import com.devappmobile.flowfuel.exception.BusinessRuleException;
+import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
+import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.user.UserRepository;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
+import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -65,21 +73,24 @@ class VehicleServiceTest {
             return v;
         });
 
-        ResponseEntity<?> response = vehicleService.createVehicle(owner, dto);
+        VehicleResponseDTO response = vehicleService.createVehicle(owner, dto);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getId()).isEqualTo(99L);
+        assertThat(response.getType()).isEqualTo("Carro");
     }
 
     // --- getUserVehicles ---
 
     @Test
-    void getUserVehicles_retornaListaDoUsuario() {
-        when(vehicleRepository.findByUserId(1L)).thenReturn(List.of(vehicle));
+    void getUserVehicles_retornaPaginaDoUsuario() {
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Vehicle> page = new PageImpl<>(List.of(vehicle), pageable, 1);
+        when(vehicleRepository.findByUserId(1L, pageable)).thenReturn(page);
 
-        ResponseEntity<List<Vehicle>> response = vehicleService.getUserVehicles(owner);
+        PageResponseDTO<VehicleResponseDTO> response = vehicleService.getUserVehicles(owner, pageable);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).hasSize(1);
+        assertThat(response.getContent()).hasSize(1);
+        assertThat(response.getTotalElements()).isEqualTo(1);
     }
 
     // --- getActiveVehicle ---
@@ -88,20 +99,18 @@ class VehicleServiceTest {
     void getActiveVehicle_quandoExiste_retornaVeiculo() {
         when(vehicleRepository.findByUserId(1L)).thenReturn(List.of(vehicle));
 
-        ResponseEntity<Vehicle> response = vehicleService.getActiveVehicle(owner);
+        VehicleResponseDTO response = vehicleService.getActiveVehicle(owner);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().getId()).isEqualTo(10L);
+        assertThat(response.getId()).isEqualTo(10L);
     }
 
     @Test
-    void getActiveVehicle_quandoNenhumAtivo_retorna404() {
+    void getActiveVehicle_quandoNenhumAtivo_lancaResourceNotFound() {
         vehicle.setIsActive(false);
         when(vehicleRepository.findByUserId(1L)).thenReturn(List.of(vehicle));
 
-        ResponseEntity<Vehicle> response = vehicleService.getActiveVehicle(owner);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThatThrownBy(() -> vehicleService.getActiveVehicle(owner))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     // --- getVehicleById ---
@@ -110,28 +119,25 @@ class VehicleServiceTest {
     void getVehicleById_donoCorreto_retornaVeiculo() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        ResponseEntity<Vehicle> response = vehicleService.getVehicleById(owner, 10L);
+        VehicleResponseDTO response = vehicleService.getVehicleById(owner, 10L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().getId()).isEqualTo(10L);
+        assertThat(response.getId()).isEqualTo(10L);
     }
 
     @Test
-    void getVehicleById_usuarioNaoEDono_retorna403() {
+    void getVehicleById_usuarioNaoEDono_lancaForbidden() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        ResponseEntity<Vehicle> response = vehicleService.getVehicleById(otherUser, 10L);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThatThrownBy(() -> vehicleService.getVehicleById(otherUser, 10L))
+                .isInstanceOf(ForbiddenOperationException.class);
     }
 
     @Test
-    void getVehicleById_veiculoInexistente_retorna404() {
+    void getVehicleById_veiculoInexistente_lancaResourceNotFound() {
         when(vehicleRepository.findById(99L)).thenReturn(Optional.empty());
 
-        ResponseEntity<Vehicle> response = vehicleService.getVehicleById(owner, 99L);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThatThrownBy(() -> vehicleService.getVehicleById(owner, 99L))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     // --- updateOdometer ---
@@ -141,19 +147,18 @@ class VehicleServiceTest {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(vehicleRepository.save(any())).thenReturn(vehicle);
 
-        ResponseEntity<Vehicle> response = vehicleService.updateOdometer(owner, 10L, 2000);
+        VehicleResponseDTO response = vehicleService.updateOdometer(owner, 10L, 2000);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getCurrentKm()).isEqualTo(2000);
         assertThat(vehicle.getCurrentKm()).isEqualTo(2000);
     }
 
     @Test
-    void updateOdometer_valorMenorQueAtual_retorna400() {
+    void updateOdometer_valorMenorQueAtual_lancaBusinessRule() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        ResponseEntity<Vehicle> response = vehicleService.updateOdometer(owner, 10L, 500);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThatThrownBy(() -> vehicleService.updateOdometer(owner, 10L, 500))
+                .isInstanceOf(BusinessRuleException.class);
         verify(vehicleRepository, never()).save(any());
     }
 
@@ -170,9 +175,8 @@ class VehicleServiceTest {
         when(vehicleRepository.findByUserId(1L)).thenReturn(List.of(vehicle, v2));
         when(vehicleRepository.saveAll(any())).thenReturn(List.of(vehicle, v2));
 
-        ResponseEntity<?> response = vehicleService.setActiveVehicle(owner, 20L);
+        vehicleService.setActiveVehicle(owner, 20L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(vehicle.getIsActive()).isFalse();
         assertThat(v2.getIsActive()).isTrue();
     }
@@ -180,22 +184,20 @@ class VehicleServiceTest {
     // --- deleteVehicle ---
 
     @Test
-    void deleteVehicle_donoCorreto_deletaERetorna200() {
+    void deleteVehicle_donoCorreto_deleta() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        ResponseEntity<?> response = vehicleService.deleteVehicle(owner, 10L);
+        vehicleService.deleteVehicle(owner, 10L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(vehicleRepository).deleteById(10L);
     }
 
     @Test
-    void deleteVehicle_usuarioNaoEDono_retorna403SemDeletar() {
+    void deleteVehicle_usuarioNaoEDono_lancaForbiddenSemDeletar() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        ResponseEntity<?> response = vehicleService.deleteVehicle(otherUser, 10L);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThatThrownBy(() -> vehicleService.deleteVehicle(otherUser, 10L))
+                .isInstanceOf(ForbiddenOperationException.class);
         verify(vehicleRepository, never()).deleteById(any());
     }
 }

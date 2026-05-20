@@ -1,48 +1,52 @@
 package com.devappmobile.flowfuel.vehicle;
 
+import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
+import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
-@RequestMapping("/api/vehicles")
+@RequestMapping("/vehicles")
 @RequiredArgsConstructor
 public class VehicleController {
 
     private final VehicleService vehicleService;
 
     @PostMapping
-    public ResponseEntity<?> createVehicle(
+    public VehicleResponseDTO createVehicle(
             @AuthenticationPrincipal User user,
             @Valid @RequestBody VehicleRequestDTO request) {
         return vehicleService.createVehicle(user, request);
     }
 
     @GetMapping
-    public ResponseEntity<List<Vehicle>> getUserVehicles(@AuthenticationPrincipal User user) {
-        return vehicleService.getUserVehicles(user);
+    public PageResponseDTO<VehicleResponseDTO> getUserVehicles(
+            @AuthenticationPrincipal User user,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return vehicleService.getUserVehicles(user, pageable);
     }
 
     @GetMapping("/active")
-    public ResponseEntity<Vehicle> getActiveVehicle(@AuthenticationPrincipal User user) {
+    public VehicleResponseDTO getActiveVehicle(@AuthenticationPrincipal User user) {
         return vehicleService.getActiveVehicle(user);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Vehicle> getVehicle(
+    public VehicleResponseDTO getVehicle(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
         return vehicleService.getVehicleById(user, id);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Vehicle> updateVehicle(
+    public VehicleResponseDTO updateVehicle(
             @AuthenticationPrincipal User user,
             @PathVariable Long id,
             @Valid @RequestBody VehicleRequestDTO request) {
@@ -50,7 +54,7 @@ public class VehicleController {
     }
 
     @PutMapping("/{id}/odometer")
-    public ResponseEntity<Vehicle> updateOdometer(
+    public VehicleResponseDTO updateOdometer(
             @AuthenticationPrincipal User user,
             @PathVariable Long id,
             @RequestParam Integer currentKm) {
@@ -58,16 +62,16 @@ public class VehicleController {
     }
 
     @PutMapping("/{id}/active")
-    public ResponseEntity<?> setActiveVehicle(
+    public void setActiveVehicle(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
-        return vehicleService.setActiveVehicle(user, id);
+        vehicleService.setActiveVehicle(user, id);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteVehicle(
+    public void deleteVehicle(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
-        return vehicleService.deleteVehicle(user, id);
+        vehicleService.deleteVehicle(user, id);
     }
 }

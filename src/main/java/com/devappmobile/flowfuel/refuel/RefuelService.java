@@ -1,19 +1,21 @@
 package com.devappmobile.flowfuel.refuel;
 
+import com.devappmobile.flowfuel.common.PageResponseDTO;
+import com.devappmobile.flowfuel.exception.BusinessRuleException;
+import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
+import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -22,28 +24,31 @@ public class RefuelService {
     private final RefuelRepository refuelRepository;
     private final VehicleRepository vehicleRepository;
 
-    public ResponseEntity<Refuel> createRefuel(User user, RefuelRequestDTO request) {
-        Optional<Vehicle> vehicleOpt = vehicleRepository.findById(request.getVehicleId());
-        if (vehicleOpt.isEmpty()) return ResponseEntity.notFound().build();
+    public RefuelResponseDTO createRefuel(User user, RefuelRequestDTO request) {
+        Vehicle vehicle = vehicleRepository.findById(request.getVehicleId())
+                .orElseThrow(() -> new ResourceNotFoundException("Veículo", request.getVehicleId()));
 
-        Vehicle vehicle = vehicleOpt.get();
-        if (!ownsVehicle(user, vehicle)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        if (!ownsVehicle(user, vehicle)) {
+            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
+        }
 
         Integer lastOdometer = refuelRepository
                 .findTopByVehicleIdOrderByOdometerDesc(vehicle.getId())
                 .map(Refuel::getOdometer)
                 .orElse(vehicle.getCurrentKm());
 
-        if (request.getOdometer() < lastOdometer) return ResponseEntity.badRequest().build();
+        if (request.getOdometer() < lastOdometer) {
+            throw new BusinessRuleException("Odômetro não pode ser menor que o último registrado");
+        }
 
         BigDecimal[] priceRange = priceRangeFor(vehicle);
         if (request.getPricePerUnit().compareTo(priceRange[0]) < 0 ||
                 request.getPricePerUnit().compareTo(priceRange[1]) > 0) {
-            return ResponseEntity.badRequest().build();
+            throw new BusinessRuleException("Preço fora da faixa permitida");
         }
 
         if (request.getEnergyAmount().compareTo(BigDecimal.valueOf(vehicle.getCapacity())) > 0) {
-            return ResponseEntity.badRequest().build();
+            throw new BusinessRuleException("Quantidade de energia excede a capacidade do veículo");
         }
 
         Refuel refuel = new Refuel();
@@ -59,39 +64,43 @@ public class RefuelService {
         vehicle.setCurrentKm(request.getOdometer());
         vehicleRepository.save(vehicle);
 
-        return ResponseEntity.ok(saved);
+        return RefuelResponseDTO.from(saved);
     }
 
-    public ResponseEntity<List<Refuel>> getVehicleRefuels(User user, Long vehicleId,
-            LocalDate startDate, LocalDate endDate) {
-        Optional<Vehicle> vehicleOpt = vehicleRepository.findById(vehicleId);
-        if (vehicleOpt.isEmpty()) return ResponseEntity.notFound().build();
-        if (!ownsVehicle(user, vehicleOpt.get())) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-
-        List<Refuel> refuels;
-        if (startDate != null && endDate != null) {
-            refuels = refuelRepository.findByVehicleIdAndRefuelDateBetweenOrderByRefuelDateDesc(
-                    vehicleId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
-        } else {
-            refuels = refuelRepository.findByVehicleIdOrderByRefuelDateDesc(vehicleId);
+    public PageResponseDTO<RefuelResponseDTO> getVehicleRefuels(User user, Long vehicleId,
+            LocalDate startDate, LocalDate endDate, Pageable pageable) {
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
+        if (!ownsVehicle(user, vehicle)) {
+            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
         }
 
-        return ResponseEntity.ok(refuels);
+        Page<Refuel> page;
+        if (startDate != null && endDate != null) {
+            page = refuelRepository.findByVehicleIdAndRefuelDateBetweenOrderByRefuelDateDesc(
+                    vehicleId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59), pageable);
+        } else {
+            page = refuelRepository.findByVehicleIdOrderByRefuelDateDesc(vehicleId, pageable);
+        }
+
+        return PageResponseDTO.from(page, RefuelResponseDTO::from);
     }
 
-    public ResponseEntity<Refuel> getRefuelById(User user, Long id) {
-        Optional<Refuel> refuelOpt = refuelRepository.findById(id);
-        if (refuelOpt.isEmpty()) return ResponseEntity.notFound().build();
-        if (!ownsRefuel(user, refuelOpt.get())) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        return ResponseEntity.ok(refuelOpt.get());
+    public RefuelResponseDTO getRefuelById(User user, Long id) {
+        Refuel refuel = refuelRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Abastecimento", id));
+        if (!ownsRefuel(user, refuel)) {
+            throw new ForbiddenOperationException("Abastecimento não pertence ao usuário");
+        }
+        return RefuelResponseDTO.from(refuel);
     }
 
-    public ResponseEntity<Refuel> updateRefuel(User user, Long id, RefuelRequestDTO request) {
-        Optional<Refuel> refuelOpt = refuelRepository.findById(id);
-        if (refuelOpt.isEmpty()) return ResponseEntity.notFound().build();
-
-        Refuel refuel = refuelOpt.get();
-        if (!ownsRefuel(user, refuel)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    public RefuelResponseDTO updateRefuel(User user, Long id, RefuelRequestDTO request) {
+        Refuel refuel = refuelRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Abastecimento", id));
+        if (!ownsRefuel(user, refuel)) {
+            throw new ForbiddenOperationException("Abastecimento não pertence ao usuário");
+        }
 
         Vehicle vehicle = refuel.getVehicle();
 
@@ -102,7 +111,9 @@ public class RefuelService {
                     .map(Refuel::getOdometer)
                     .orElse(vehicle.getCurrentKm());
 
-            if (request.getOdometer() < previousOdometer) return ResponseEntity.badRequest().build();
+            if (request.getOdometer() < previousOdometer) {
+                throw new BusinessRuleException("Odômetro não pode ser menor que o anterior");
+            }
 
             refuel.setOdometer(request.getOdometer());
             refuel.setKmSinceLastRefuel(request.getOdometer() - previousOdometer);
@@ -110,7 +121,7 @@ public class RefuelService {
 
         if (request.getEnergyAmount() != null) {
             if (request.getEnergyAmount().compareTo(BigDecimal.valueOf(vehicle.getCapacity())) > 0) {
-                return ResponseEntity.badRequest().build();
+                throw new BusinessRuleException("Quantidade de energia excede a capacidade do veículo");
             }
             refuel.setEnergyAmount(request.getEnergyAmount());
         }
@@ -119,29 +130,29 @@ public class RefuelService {
             BigDecimal[] priceRange = priceRangeFor(vehicle);
             if (request.getPricePerUnit().compareTo(priceRange[0]) < 0 ||
                     request.getPricePerUnit().compareTo(priceRange[1]) > 0) {
-                return ResponseEntity.badRequest().build();
+                throw new BusinessRuleException("Preço fora da faixa permitida");
             }
             refuel.setPricePerUnit(request.getPricePerUnit());
         }
 
         if (request.getFullTank() != null) refuel.setFullTank(request.getFullTank());
 
-        return ResponseEntity.ok(refuelRepository.save(refuel));
+        return RefuelResponseDTO.from(refuelRepository.save(refuel));
     }
 
-    public ResponseEntity<?> deleteRefuel(User user, Long id) {
-        Optional<Refuel> refuelOpt = refuelRepository.findById(id);
-        if (refuelOpt.isEmpty()) return ResponseEntity.notFound().build();
-        if (!ownsRefuel(user, refuelOpt.get())) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-
+    public void deleteRefuel(User user, Long id) {
+        Refuel refuel = refuelRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Abastecimento", id));
+        if (!ownsRefuel(user, refuel)) {
+            throw new ForbiddenOperationException("Abastecimento não pertence ao usuário");
+        }
         refuelRepository.deleteById(id);
-        return ResponseEntity.ok().build();
     }
 
-    public ResponseEntity<BigDecimal> calculateAverageConsumption(Long vehicleId) {
+    public BigDecimal calculateAverageConsumption(Long vehicleId) {
         List<Refuel> refuels = refuelRepository.findByVehicleIdAndFullTankTrueOrderByRefuelDateDesc(vehicleId);
 
-        if (refuels.size() < 2) return ResponseEntity.ok(BigDecimal.ZERO);
+        if (refuels.size() < 2) return BigDecimal.ZERO;
 
         double totalKm = 0;
         double totalEnergy = 0;
@@ -158,33 +169,30 @@ public class RefuelService {
             }
         }
 
-        if (validRefuels == 0 || totalEnergy == 0) return ResponseEntity.ok(BigDecimal.ZERO);
+        if (validRefuels == 0 || totalEnergy == 0) return BigDecimal.ZERO;
 
-        return ResponseEntity.ok(BigDecimal.valueOf(totalKm / totalEnergy)
-                .setScale(2, RoundingMode.HALF_UP));
+        return BigDecimal.valueOf(totalKm / totalEnergy).setScale(2, RoundingMode.HALF_UP);
     }
 
-    public ResponseEntity<BigDecimal> getTotalSpent(Long vehicleId) {
-        return ResponseEntity.ok(refuelRepository.getTotalSpentByVehicleId(vehicleId).orElse(BigDecimal.ZERO));
+    public BigDecimal getTotalSpent(Long vehicleId) {
+        return refuelRepository.getTotalSpentByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
     }
 
-    public ResponseEntity<BigDecimal> getTotalEnergy(Long vehicleId) {
-        return ResponseEntity.ok(refuelRepository.getTotalEnergyByVehicleId(vehicleId).orElse(BigDecimal.ZERO));
+    public BigDecimal getTotalEnergy(Long vehicleId) {
+        return refuelRepository.getTotalEnergyByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
     }
 
-    public ResponseEntity<BigDecimal> getAveragePricePerUnit(Long vehicleId) {
-        Optional<Vehicle> vehicleOpt = vehicleRepository.findById(vehicleId);
-        if (vehicleOpt.isEmpty()) return ResponseEntity.notFound().build();
+    public BigDecimal getAveragePricePerUnit(Long vehicleId) {
+        vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
 
-        Optional<BigDecimal> totalEnergy = refuelRepository.getTotalEnergyByVehicleId(vehicleId);
-        Optional<BigDecimal> totalAmount = refuelRepository.getTotalSpentByVehicleId(vehicleId);
+        BigDecimal totalEnergy = refuelRepository.getTotalEnergyByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
+        BigDecimal totalAmount = refuelRepository.getTotalSpentByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
 
-        if (totalEnergy.isPresent() && totalAmount.isPresent() &&
-                totalEnergy.get().compareTo(BigDecimal.ZERO) > 0) {
-            return ResponseEntity.ok(totalAmount.get().divide(totalEnergy.get(), 3, RoundingMode.HALF_UP));
+        if (totalEnergy.compareTo(BigDecimal.ZERO) > 0) {
+            return totalAmount.divide(totalEnergy, 3, RoundingMode.HALF_UP);
         }
-
-        return ResponseEntity.ok(BigDecimal.ZERO);
+        return BigDecimal.ZERO;
     }
 
     private boolean ownsVehicle(User user, Vehicle vehicle) {

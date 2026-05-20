@@ -34,12 +34,12 @@ class VehicleControllerIntegrationTest {
     }
 
     private String obterToken(String email) throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123","name":"User"}
                         """.formatted(email)));
-        MvcResult result = mockMvc.perform(post("/api/auth/login")
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123"}
@@ -49,7 +49,7 @@ class VehicleControllerIntegrationTest {
     }
 
     private long criarVeiculo(String token) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/vehicles")
+        MvcResult result = mockMvc.perform(post("/api/v1/vehicles")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -71,7 +71,7 @@ class VehicleControllerIntegrationTest {
     void createVehicle_autenticado_retornaVeiculoCriado() throws Exception {
         String token = obterToken("veiculo@test.com");
 
-        MvcResult result = mockMvc.perform(post("/api/vehicles")
+        MvcResult result = mockMvc.perform(post("/api/v1/vehicles")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -92,7 +92,7 @@ class VehicleControllerIntegrationTest {
 
     @Test
     void createVehicle_semToken_retorna401() throws Exception {
-        mockMvc.perform(post("/api/vehicles")
+        mockMvc.perform(post("/api/v1/vehicles")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"type":"Carro","energyType":"COMBUSTION","currentKm":0,"capacity":50}
@@ -105,10 +105,11 @@ class VehicleControllerIntegrationTest {
         String token = obterToken("lista@test.com");
         criarVeiculo(token);
 
-        mockMvc.perform(get("/api/vehicles")
+        mockMvc.perform(get("/api/v1/vehicles")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
@@ -117,7 +118,7 @@ class VehicleControllerIntegrationTest {
         String tokenB = obterToken("userB@test.com");
         long vehicleId = criarVeiculo(tokenA);
 
-        mockMvc.perform(get("/api/vehicles/{id}", vehicleId)
+        mockMvc.perform(get("/api/v1/vehicles/{id}", vehicleId)
                 .header("Authorization", "Bearer " + tokenB))
                 .andExpect(status().isForbidden());
     }
@@ -127,7 +128,7 @@ class VehicleControllerIntegrationTest {
         String token = obterToken("odometro@test.com");
         long vehicleId = criarVeiculo(token);
 
-        mockMvc.perform(put("/api/vehicles/{id}/odometer", vehicleId)
+        mockMvc.perform(put("/api/v1/vehicles/{id}/odometer", vehicleId)
                 .header("Authorization", "Bearer " + token)
                 .param("currentKm", "55000"))
                 .andExpect(status().isOk());
@@ -138,7 +139,7 @@ class VehicleControllerIntegrationTest {
         String token = obterToken("odometrobaixo@test.com");
         long vehicleId = criarVeiculo(token);
 
-        mockMvc.perform(put("/api/vehicles/{id}/odometer", vehicleId)
+        mockMvc.perform(put("/api/v1/vehicles/{id}/odometer", vehicleId)
                 .header("Authorization", "Bearer " + token)
                 .param("currentKm", "100"))
                 .andExpect(status().isBadRequest());
@@ -149,7 +150,7 @@ class VehicleControllerIntegrationTest {
         String token = obterToken("del@test.com");
         long vehicleId = criarVeiculo(token);
 
-        mockMvc.perform(delete("/api/vehicles/{id}", vehicleId)
+        mockMvc.perform(delete("/api/v1/vehicles/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
     }
@@ -160,11 +161,11 @@ class VehicleControllerIntegrationTest {
         criarVeiculo(token);
         long v2 = criarVeiculo(token);
 
-        mockMvc.perform(put("/api/vehicles/{id}/active", v2)
+        mockMvc.perform(put("/api/v1/vehicles/{id}/active", v2)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/vehicles/active")
+        mockMvc.perform(get("/api/v1/vehicles/active")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(v2));

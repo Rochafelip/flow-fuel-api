@@ -34,12 +34,12 @@ class RefuelControllerIntegrationTest {
     }
 
     private String obterToken(String email) throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123","name":"User"}
                         """.formatted(email)));
-        MvcResult result = mockMvc.perform(post("/api/auth/login")
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123"}
@@ -49,7 +49,7 @@ class RefuelControllerIntegrationTest {
     }
 
     private long criarVeiculo(String token) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/vehicles")
+        MvcResult result = mockMvc.perform(post("/api/v1/vehicles")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -61,7 +61,7 @@ class RefuelControllerIntegrationTest {
     }
 
     private long criarAbastecimento(String token, long vehicleId, int odometer) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/refuels")
+        MvcResult result = mockMvc.perform(post("/api/v1/refuels")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -83,7 +83,7 @@ class RefuelControllerIntegrationTest {
         String token = obterToken("refuel@test.com");
         long vehicleId = criarVeiculo(token);
 
-        MvcResult result = mockMvc.perform(post("/api/refuels")
+        MvcResult result = mockMvc.perform(post("/api/v1/refuels")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -108,7 +108,7 @@ class RefuelControllerIntegrationTest {
         String token = obterToken("odometrobaixo@test.com");
         long vehicleId = criarVeiculo(token);
 
-        mockMvc.perform(post("/api/refuels")
+        mockMvc.perform(post("/api/v1/refuels")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -128,7 +128,7 @@ class RefuelControllerIntegrationTest {
         String tokenB = obterToken("refuelB@test.com");
         long vehicleIdA = criarVeiculo(tokenA);
 
-        mockMvc.perform(post("/api/refuels")
+        mockMvc.perform(post("/api/v1/refuels")
                 .header("Authorization", "Bearer " + tokenB)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -149,10 +149,11 @@ class RefuelControllerIntegrationTest {
         criarAbastecimento(token, vehicleId, 50500);
         criarAbastecimento(token, vehicleId, 51000);
 
-        mockMvc.perform(get("/api/refuels/vehicle/{id}", vehicleId)
+        mockMvc.perform(get("/api/v1/refuels/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.totalElements").value(2));
     }
 
     @Test
@@ -161,7 +162,7 @@ class RefuelControllerIntegrationTest {
         long vehicleId = criarVeiculo(token);
         long refuelId = criarAbastecimento(token, vehicleId, 50500);
 
-        mockMvc.perform(get("/api/refuels/{id}", refuelId)
+        mockMvc.perform(get("/api/v1/refuels/{id}", refuelId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(refuelId));
@@ -174,7 +175,7 @@ class RefuelControllerIntegrationTest {
         long vehicleId = criarVeiculo(tokenA);
         long refuelId = criarAbastecimento(tokenA, vehicleId, 50500);
 
-        mockMvc.perform(get("/api/refuels/{id}", refuelId)
+        mockMvc.perform(get("/api/v1/refuels/{id}", refuelId)
                 .header("Authorization", "Bearer " + tokenB))
                 .andExpect(status().isForbidden());
     }
@@ -185,7 +186,7 @@ class RefuelControllerIntegrationTest {
         long vehicleId = criarVeiculo(token);
         long refuelId = criarAbastecimento(token, vehicleId, 50500);
 
-        mockMvc.perform(delete("/api/refuels/{id}", refuelId)
+        mockMvc.perform(delete("/api/v1/refuels/{id}", refuelId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
     }
@@ -196,11 +197,12 @@ class RefuelControllerIntegrationTest {
         long vehicleId = criarVeiculo(token);
         criarAbastecimento(token, vehicleId, 50500);
 
-        mockMvc.perform(get("/api/refuels/vehicle/{id}", vehicleId)
+        mockMvc.perform(get("/api/v1/refuels/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token)
                 .param("startDate", "2020-01-01")
                 .param("endDate", "2020-12-31"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0));
     }
 }

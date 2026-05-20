@@ -1,5 +1,9 @@
 package com.devappmobile.flowfuel.refuel;
 
+import com.devappmobile.flowfuel.common.PageResponseDTO;
+import com.devappmobile.flowfuel.exception.BusinessRuleException;
+import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
+import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.EnergyType;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
@@ -10,14 +14,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -78,95 +85,89 @@ class RefuelServiceTest {
         when(refuelRepository.save(any(Refuel.class))).thenReturn(saved);
         when(vehicleRepository.save(any(Vehicle.class))).thenReturn(vehicle);
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(owner, dto);
+        RefuelResponseDTO response = refuelService.createRefuel(owner, dto);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        // Verifica que o odometro do veiculo foi atualizado
+        assertThat(response).isNotNull();
+        assertThat(response.getKmSinceLastRefuel()).isEqualTo(500);
         verify(vehicleRepository).save(argThat(v -> v.getCurrentKm() == 1500));
     }
 
     @Test
-    void createRefuel_odometroMenorQueUltimo_retorna400() {
+    void createRefuel_odometroMenorQueUltimo_lancaBusinessRule() {
         Refuel lastRefuel = new Refuel();
         lastRefuel.setOdometer(2000);
 
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89); // odometer < lastOdometer
+        RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.of(lastRefuel));
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(owner, dto);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(BusinessRuleException.class);
         verify(refuelRepository, never()).save(any());
     }
 
     @Test
-    void createRefuel_precoMuitoBaixo_retorna400() {
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 0.10); // < 0.50 para combustão
+    void createRefuel_precoMuitoBaixo_lancaBusinessRule() {
+        RefuelRequestDTO dto = buildRequest(1500, 40.0, 0.10);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(owner, dto);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(BusinessRuleException.class);
         verify(refuelRepository, never()).save(any());
     }
 
     @Test
-    void createRefuel_precoMuitoAlto_retorna400() {
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 20.0); // > 15.0 para combustão
+    void createRefuel_precoMuitoAlto_lancaBusinessRule() {
+        RefuelRequestDTO dto = buildRequest(1500, 40.0, 20.0);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(owner, dto);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(BusinessRuleException.class);
         verify(refuelRepository, never()).save(any());
     }
 
     @Test
-    void createRefuel_energiaMaiorQueCapacidade_retorna400() {
-        RefuelRequestDTO dto = buildRequest(1500, 60.0, 5.89); // 60 > 55 (capacidade)
+    void createRefuel_energiaMaiorQueCapacidade_lancaBusinessRule() {
+        RefuelRequestDTO dto = buildRequest(1500, 60.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(owner, dto);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(BusinessRuleException.class);
         verify(refuelRepository, never()).save(any());
     }
 
     @Test
-    void createRefuel_usuarioNaoEDono_retorna403() {
+    void createRefuel_usuarioNaoEDono_lancaForbidden() {
         RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(otherUser, dto);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThatThrownBy(() -> refuelService.createRefuel(otherUser, dto))
+                .isInstanceOf(ForbiddenOperationException.class);
         verify(refuelRepository, never()).save(any());
     }
 
     @Test
-    void createRefuel_veiculoInexistente_retorna404() {
+    void createRefuel_veiculoInexistente_lancaResourceNotFound() {
         RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.empty());
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(owner, dto);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void createRefuel_veiculoEletrico_aceitaPrecoNaFaixaEletrica() {
         vehicle.setEnergyType(EnergyType.ELECTRIC);
-        RefuelRequestDTO dto = buildRequest(1500, 30.0, 1.50); // válido para elétrico
+        RefuelRequestDTO dto = buildRequest(1500, 30.0, 1.50);
 
         Refuel saved = new Refuel();
         saved.setId(5L);
@@ -180,9 +181,10 @@ class RefuelServiceTest {
         when(refuelRepository.save(any())).thenReturn(saved);
         when(vehicleRepository.save(any())).thenReturn(vehicle);
 
-        ResponseEntity<Refuel> response = refuelService.createRefuel(owner, dto);
+        RefuelResponseDTO response = refuelService.createRefuel(owner, dto);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(5L);
     }
 
     // --- getRefuelById ---
@@ -195,68 +197,69 @@ class RefuelServiceTest {
 
         when(refuelRepository.findById(1L)).thenReturn(Optional.of(refuel));
 
-        ResponseEntity<Refuel> response = refuelService.getRefuelById(owner, 1L);
+        RefuelResponseDTO response = refuelService.getRefuelById(owner, 1L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getId()).isEqualTo(1L);
     }
 
     @Test
-    void getRefuelById_usuarioNaoEDono_retorna403() {
+    void getRefuelById_usuarioNaoEDono_lancaForbidden() {
         Refuel refuel = new Refuel();
         refuel.setId(1L);
         refuel.setVehicle(vehicle);
 
         when(refuelRepository.findById(1L)).thenReturn(Optional.of(refuel));
 
-        ResponseEntity<Refuel> response = refuelService.getRefuelById(otherUser, 1L);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThatThrownBy(() -> refuelService.getRefuelById(otherUser, 1L))
+                .isInstanceOf(ForbiddenOperationException.class);
     }
 
     // --- deleteRefuel ---
 
     @Test
-    void deleteRefuel_donoCorreto_deletaERetorna200() {
+    void deleteRefuel_donoCorreto_deleta() {
         Refuel refuel = new Refuel();
         refuel.setId(1L);
         refuel.setVehicle(vehicle);
 
         when(refuelRepository.findById(1L)).thenReturn(Optional.of(refuel));
 
-        ResponseEntity<?> response = refuelService.deleteRefuel(owner, 1L);
+        refuelService.deleteRefuel(owner, 1L);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(refuelRepository).deleteById(1L);
     }
 
     @Test
-    void deleteRefuel_usuarioNaoEDono_retorna403SemDeletar() {
+    void deleteRefuel_usuarioNaoEDono_lancaForbiddenSemDeletar() {
         Refuel refuel = new Refuel();
         refuel.setId(1L);
         refuel.setVehicle(vehicle);
 
         when(refuelRepository.findById(1L)).thenReturn(Optional.of(refuel));
 
-        ResponseEntity<?> response = refuelService.deleteRefuel(otherUser, 1L);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThatThrownBy(() -> refuelService.deleteRefuel(otherUser, 1L))
+                .isInstanceOf(ForbiddenOperationException.class);
         verify(refuelRepository, never()).deleteById(any());
     }
 
     // --- getVehicleRefuels ---
 
     @Test
-    void getVehicleRefuels_semFiltroDeData_retornaListaCompleta() {
+    void getVehicleRefuels_semFiltroDeData_retornaPaginaCompleta() {
         Refuel r1 = new Refuel();
         r1.setId(1L);
         r1.setVehicle(vehicle);
 
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Refuel> page = new PageImpl<>(List.of(r1), pageable, 1);
+
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
-        when(refuelRepository.findByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(List.of(r1));
+        when(refuelRepository.findByVehicleIdOrderByRefuelDateDesc(10L, pageable)).thenReturn(page);
 
-        ResponseEntity<List<Refuel>> response = refuelService.getVehicleRefuels(owner, 10L, null, null);
+        PageResponseDTO<RefuelResponseDTO> response =
+                refuelService.getVehicleRefuels(owner, 10L, null, null, pageable);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).hasSize(1);
+        assertThat(response.getContent()).hasSize(1);
+        assertThat(response.getTotalElements()).isEqualTo(1);
     }
 }
