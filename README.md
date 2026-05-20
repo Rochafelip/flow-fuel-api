@@ -1,126 +1,148 @@
 # FlowFuel
 
-Aplicação Spring Boot para gerenciar usuários e veículos (cadastro, login, veículos, abastecimentos).
+Aplicação Spring Boot para gerenciamento de combustível: cadastro/login de usuários, veículos, abastecimentos e dashboard de consumo.
 
-**Resumo rápido**
-- **Stack:** Java 21, Spring Boot, Spring Data JPA, Spring Security (filtro JWT), Lombok
+**Versão atual:** `0.0.1-SNAPSHOT`
+
+## Stack
+
+- **Java:** 21
+- **Framework:** Spring Boot 3.5.7 (Web, Data JPA, Security, Validation)
+- **Autenticação:** JWT (jjwt 0.11.5) via filtro próprio
+- **Banco:** PostgreSQL (runtime) / H2 (testes)
+- **Docs:** springdoc-openapi (Swagger UI)
 - **Build:** Maven
+- **Utilitários:** Lombok
 
-**Como rodar**
-- Instalar JDK 21 e Maven.
-- Build:
+## Como rodar
+
+Pré-requisitos: JDK 21 e Maven.
 
 ```bash
+# Build
 mvn clean package -DskipTests
-```
 
-- Rodar:
-
-```bash
+# Executar
 java -jar target/flowfuel-0.0.1-SNAPSHOT.jar
 # ou
 mvn spring-boot:run
 ```
 
-**Arquivos importantes**
-- Configurações de segurança: [src/main/java/com/devappmobile/flowfuel/config/SecurityConfig.java](src/main/java/com/devappmobile/flowfuel/config/SecurityConfig.java)
-- Filtro JWT: [src/main/java/com/devappmobile/flowfuel/config/JwtAuthenticationFilter.java](src/main/java/com/devappmobile/flowfuel/config/JwtAuthenticationFilter.java)
-- Serviço de usuário: [src/main/java/com/devappmobile/flowfuel/user/UserService.java](src/main/java/com/devappmobile/flowfuel/user/UserService.java)
-- Serviço de veículo: [src/main/java/com/devappmobile/flowfuel/vehicle/VehicleService.java](src/main/java/com/devappmobile/flowfuel/vehicle/VehicleService.java)
+## Como testar
 
-**Endpoints principais e exemplos (Postman / curl)**
-
-1) Criar usuário
-- POST `/api/auth/register`
-- Headers: `Content-Type: application/json`
-- Body exemplo:
-
-```json
-{
-  "email": "usuario@exemplo.com",
-  "password": "senha123",
-  "name": "Fulano",
-  "phone": "11999990000"
-}
+```bash
+mvn test
 ```
 
-2) Login (obter token)
-- POST `/api/auth/login`
-- Headers: `Content-Type: application/json`
-- Body:
+A suíte cobre testes unitários e de integração dos módulos `user`, `vehicle`, `refuel` e `dashboard`.
 
-```json
-{
-  "email": "usuario@exemplo.com",
-  "password": "senha123"
-}
+## Documentação da API
+
+Com a aplicação em execução, o Swagger UI fica disponível em:
+
+- `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+## Estrutura do projeto
+
+- [src/main/java/com/devappmobile/flowfuel/config/](src/main/java/com/devappmobile/flowfuel/config/) — `SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`
+- [src/main/java/com/devappmobile/flowfuel/user/](src/main/java/com/devappmobile/flowfuel/user/) — autenticação e perfil de usuário
+- [src/main/java/com/devappmobile/flowfuel/vehicle/](src/main/java/com/devappmobile/flowfuel/vehicle/) — CRUD de veículos
+- [src/main/java/com/devappmobile/flowfuel/refuel/](src/main/java/com/devappmobile/flowfuel/refuel/) — registro de abastecimentos
+- [src/main/java/com/devappmobile/flowfuel/dashboard/](src/main/java/com/devappmobile/flowfuel/dashboard/) — métricas de consumo por veículo
+
+## Autenticação
+
+1. Faça `POST /api/auth/login` com email e senha.
+2. A resposta retorna um JWT no body (`{"token": "..."}`) e também no header `Authorization: Bearer <token>`.
+3. Em endpoints protegidos, envie `Authorization: Bearer <token>`. O usuário autenticado é injetado nos controllers via `@AuthenticationPrincipal User user` — não é mais necessário enviar `userId` em headers.
+
+## Endpoints principais
+
+### Autenticação e perfil — `/api/auth`
+
+| Método | Path                                | Descrição                                 |
+| ------ | ----------------------------------- | ----------------------------------------- |
+| POST   | `/register`                         | Cria usuário                              |
+| POST   | `/login`                            | Autentica e retorna JWT                   |
+| GET    | `/{userId}/profile`                 | Retorna perfil                            |
+| PUT    | `/{userId}/profile`                 | Atualiza perfil                           |
+| POST   | `/{userId}/upload-profile-picture`  | Upload de foto (JPEG/PNG/WEBP, máx 5 MB)  |
+| DELETE | `/{userId}`                         | Exclui usuário                            |
+
+Exemplo — registrar usuário:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "usuario@exemplo.com",
+    "password": "senha123",
+    "name": "Fulano",
+    "phone": "11999990000"
+  }'
 ```
 
-- Nota: a implementação atual retorna um token UUID (ver `UserService`). O filtro de segurança (`JwtAuthenticationFilter`) espera um JWT; recomendo ajustar `UserService.login` para retornar um JWT usando `JwtUtil.generateToken(email)`.
+Exemplo — login:
 
-3) Criar veículo (requer autenticação)
-- POST `/api/vehicles`
-- Headers:
-  - `Content-Type: application/json`
-  - `Authorization: Bearer <TOKEN>` (ver nota acima)
-- Body exemplo:
-
-```json
-{
-  "type": "Carro",
-  "energyType": 0,
-  "fuelSubType": "Gasolina",
-  "currentKm": 12345,
-  "capacity": 50,
-  "brand": "Toyota",
-  "model": "Corolla",
-  "manufactureYear": 2018,
-  "modelYear": 2019,
-  "color": "Prata",
-  "licensePlate": "ABC1D23"
-}
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "usuario@exemplo.com", "password": "senha123"}'
 ```
 
-4) Listar veículos do usuário
-- GET `/api/vehicles`
-- Headers:
-  - `Authorization: Bearer <TOKEN>`
-  - `userId: <id-do-usuario>` (a implementação atual usa `@RequestHeader Long userId`)
+### Veículos — `/api/vehicles` (requer JWT)
 
-5) Obter veículo ativo
-- GET `/api/vehicles/active`
-- Headers: `Authorization: Bearer <TOKEN>`, `userId: <id-do-usuario>`
+| Método | Path                              | Descrição                              |
+| ------ | --------------------------------- | -------------------------------------- |
+| POST   | `/`                               | Cria veículo                           |
+| GET    | `/`                               | Lista veículos do usuário autenticado  |
+| GET    | `/active`                         | Retorna o veículo ativo                |
+| GET    | `/{id}`                           | Detalhe do veículo                     |
+| PUT    | `/{id}`                           | Atualiza veículo                       |
+| PUT    | `/{id}/odometer?currentKm=13000`  | Atualiza odômetro                      |
+| PUT    | `/{id}/active`                    | Define veículo ativo                   |
+| DELETE | `/{id}`                           | Remove veículo                         |
 
-6) Atualizar veículo
-- PUT `/api/vehicles/{id}`
-- Headers: `Content-Type: application/json`, `Authorization: Bearer <TOKEN>`
-- Body: somente campos a alterar (ex.: `{"color": "Preto"}`)
+Exemplo — criar veículo:
 
-7) Atualizar odômetro
-- PUT `/api/vehicles/{id}/odometer?currentKm=13000`
-- Headers: `Authorization: Bearer <TOKEN>`
+```bash
+curl -X POST http://localhost:8080/api/vehicles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -d '{
+    "type": "Carro",
+    "energyType": 0,
+    "fuelSubType": "Gasolina",
+    "currentKm": 12345,
+    "capacity": 50,
+    "brand": "Toyota",
+    "model": "Corolla",
+    "manufactureYear": 2018,
+    "modelYear": 2019,
+    "color": "Prata",
+    "licensePlate": "ABC1D23"
+  }'
+```
 
-8) Marcar veículo ativo
-- PUT `/api/vehicles/{id}/active`
-- Headers: `Authorization: Bearer <TOKEN>`, `userId: <id-do-usuario>`
+### Abastecimentos — `/api/refuels` (requer JWT)
 
-9) Deletar veículo
-- DELETE `/api/vehicles/{id}`
-- Headers: `Authorization: Bearer <TOKEN>`
+| Método | Path                     | Descrição                        |
+| ------ | ------------------------ | -------------------------------- |
+| POST   | `/`                      | Registra abastecimento           |
+| GET    | `/vehicle/{vehicleId}`   | Lista abastecimentos do veículo  |
+| GET    | `/{id}`                  | Detalhe do abastecimento         |
+| PUT    | `/{id}`                  | Atualiza abastecimento           |
+| DELETE | `/{id}`                  | Remove abastecimento             |
 
-**Observações / recomendações**
-- A entidade `Vehicle` possui `@ManyToOne ... nullable = false` para `user` — portanto, todo veículo deve estar vinculado a um usuário.
-- Melhorias recomendadas:
-  - Ajustar `UserService.login` para retornar JWT (usar `JwtUtil.generateToken(email)`) e, no filtro, carregar a entidade `User` e setar como principal.
-  - Substituir `userId` em headers por obter `userId` do `Authentication` (mais seguro e menos verboso).
-  - Adicionar validações (`@Valid`, `@NotBlank`, `@NotNull`, `@Min`) no DTO `VehicleRequestDTO` e usar `@Valid` no controller.
-  - Verificar duplicidade de `licensePlate` por usuário antes de salvar (`existsByLicensePlateAndUserId`).
-  - Preferir mapping por nome na enum `EnergyType` (ou `@JsonCreator`) para aceitar strings no JSON em vez de ordinais.
+### Dashboard — `/api/dashboard` (requer JWT)
 
-**Locais úteis no código**
-- `UserController`: [src/main/java/com/devappmobile/flowfuel/user/UserController.java](src/main/java/com/devappmobile/flowfuel/user/UserController.java)
-- `UserService`: [src/main/java/com/devappmobile/flowfuel/user/UserService.java](src/main/java/com/devappmobile/flowfuel/user/UserService.java)
-- `VehicleController`: [src/main/java/com/devappmobile/flowfuel/vehicle/VehicleController.java](src/main/java/com/devappmobile/flowfuel/vehicle/VehicleController.java)
-- `VehicleService`: [src/main/java/com/devappmobile/flowfuel/vehicle/VehicleService.java](src/main/java/com/devappmobile/flowfuel/vehicle/VehicleService.java)
+| Método | Path                     | Descrição                        |
+| ------ | ------------------------ | -------------------------------- |
+| GET    | `/vehicle/{vehicleId}`   | Métricas de consumo do veículo   |
 
-Se quiser, eu já aplico as melhorias recomendadas (JWT no login, validação do DTO, checagem de placa duplicada e validação de `user == null`).
+## Observações
+
+- Todo `Vehicle` é vinculado a um `User` (`@ManyToOne nullable = false`).
+- DTOs usam Bean Validation (`@Valid`, `@NotBlank`, etc.).
+- `EnergyType` é uma enum — verifique os valores aceitos em [EnergyType.java](src/main/java/com/devappmobile/flowfuel/vehicle/EnergyType.java).
