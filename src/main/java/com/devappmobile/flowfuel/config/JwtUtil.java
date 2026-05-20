@@ -1,19 +1,22 @@
 package com.devappmobile.flowfuel.config;
 
 import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import java.util.Base64;
+
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 @Component
 public class JwtUtil {
-    private final String SECRET_KEY;
-    private final long EXPIRATION_TIME = 86400000; // 24 horas
-    
-    public JwtUtil(@Value("${jwt.secret:flowfuel-app-secret-key-stable-production-2026}") String secret) {
-        // Chave estável vinda de properties ou padrão
-        this.SECRET_KEY = Base64.getEncoder().encodeToString(secret.getBytes());
+
+    private final SecretKey secretKey;
+    private static final long EXPIRATION_TIME = 86400000; // 24 horas
+
+    public JwtUtil(@Value("${jwt.secret}") String secret) {
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
     public String generateToken(String email, Long userId) {
@@ -22,42 +25,37 @@ public class JwtUtil {
                 .claim("userId", userId)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(SignatureAlgorithm.HS512, SECRET_KEY) 
+                .signWith(secretKey)
                 .compact();
     }
 
     public String extractEmail(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(SECRET_KEY)
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getSubject();
+        return parseClaims(token).getSubject();
     }
 
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder()
-                .setSigningKey(SECRET_KEY)
-                .build()
-                .parseClaimsJws(token);
+            parseClaims(token);
             return true;
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }
-    
+
     public Long extractUserId(String token) {
         try {
-            Object userId = Jwts.parserBuilder()
-                    .setSigningKey(SECRET_KEY)
-                    .build()
-                    .parseClaimsJws(token)
-                    .getBody()
-                    .get("userId");
+            Object userId = parseClaims(token).get("userId");
             return userId != null ? Long.valueOf(userId.toString()) : null;
         } catch (JwtException | IllegalArgumentException e) {
             return null;
         }
+    }
+
+    private Claims parseClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(secretKey)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
     }
 }

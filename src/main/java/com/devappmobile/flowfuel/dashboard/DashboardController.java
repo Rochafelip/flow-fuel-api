@@ -1,12 +1,13 @@
 package com.devappmobile.flowfuel.dashboard;
 
+import com.devappmobile.flowfuel.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/dashboard")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class DashboardController {
 
@@ -14,11 +15,8 @@ public class DashboardController {
 
     @GetMapping("/vehicle/{vehicleId}")
     public ResponseEntity<DashboardDTO> getVehicleDashboard(
+            @AuthenticationPrincipal User user,
             @PathVariable Long vehicleId) {
-
-        DashboardDTO dashboard =
-                dashboardService.getVehicleDashboard(vehicleId);
-
-        return ResponseEntity.ok(dashboard);
+        return dashboardService.getVehicleDashboard(user, vehicleId);
     }
 }

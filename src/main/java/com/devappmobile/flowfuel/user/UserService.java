@@ -8,28 +8,33 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+    private static final List<String> ALLOWED_IMAGE_TYPES = List.of("image/jpeg", "image/png", "image/webp");
+
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
 
-    public ResponseEntity<?> register(User user) {
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            return ResponseEntity.badRequest().body("Email já cadastrado");
+    public ResponseEntity<UserResponseDTO> register(UserRegisterDTO dto) {
+        if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
+            return ResponseEntity.badRequest().build();
         }
 
-        if (user.getPassword().length() < 6) {
-            return ResponseEntity.badRequest().body("Senha deve ter pelo menos 6 caracteres");
-        }
+        User user = new User();
+        user.setEmail(dto.getEmail());
+        user.setPassword(passwordEncoder.encode(dto.getPassword()));
+        user.setName(dto.getName());
+        user.setPhone(dto.getPhone());
 
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-        User savedUser = userRepository.save(user);
-        return ResponseEntity.ok(savedUser);
+        return ResponseEntity.ok(UserResponseDTO.from(userRepository.save(user)));
     }
 
     public ResponseEntity<?> login(String email, String password) {
@@ -45,72 +50,62 @@ public class UserService {
 
         return ResponseEntity.ok(new LoginResponse(token));
     }
-    public ResponseEntity<?> sendPasswordReset(String email) {
-        // RF001.2 - Recuperação de senha
-        Optional<User> user = userRepository.findByEmail(email);
-        if (user.isPresent()) {
-            // Lógica para enviar email de recuperação
-            return ResponseEntity.ok("Email de recuperação enviado");
-        }
-        return ResponseEntity.badRequest().body("Email não encontrado");
+
+    public ResponseEntity<UserResponseDTO> getUserProfile(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> ResponseEntity.ok(UserResponseDTO.from(user)))
+                .orElse(ResponseEntity.notFound().build());
     }
-    
-    public ResponseEntity<User> getUserProfile(Long userId) {
-        // RF001.3 - Obter perfil
-        Optional<User> user = userRepository.findById(userId);
-        return user.map(ResponseEntity::ok)
-                  .orElse(ResponseEntity.notFound().build());
-    }
-    
-    public ResponseEntity<User> updateUserProfile(Long userId, User userDetails) {
-        // RF001.3 - Editar perfil
+
+    public ResponseEntity<UserResponseDTO> updateUserProfile(Long userId, UserRegisterDTO dto) {
         Optional<User> userOptional = userRepository.findById(userId);
-        if (userOptional.isPresent()) {
-            User user = userOptional.get();
-            
-            // Atualizar campos permitidos
-            if (userDetails.getName() != null) {
-                user.setName(userDetails.getName());
+        if (userOptional.isEmpty()) return ResponseEntity.notFound().build();
+
+        User user = userOptional.get();
+
+        if (dto.getName() != null) user.setName(dto.getName());
+        if (dto.getPhone() != null) user.setPhone(dto.getPhone());
+
+        if (dto.getEmail() != null && !dto.getEmail().equals(user.getEmail())) {
+            if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
+                return ResponseEntity.badRequest().build();
             }
-            if (userDetails.getPhone() != null) {
-                user.setPhone(userDetails.getPhone());
-            }
-            if (userDetails.getEmail() != null && 
-                !userDetails.getEmail().equals(user.getEmail())) {
-                // Validar se novo email não existe
-                if (userRepository.findByEmail(userDetails.getEmail()).isEmpty()) {
-                    user.setEmail(userDetails.getEmail());
-                } else {
-                    return ResponseEntity.badRequest().build();
-                }
-            }
-            
-            User updatedUser = userRepository.save(user);
-            return ResponseEntity.ok(updatedUser);
+            user.setEmail(dto.getEmail());
         }
-        return ResponseEntity.notFound().build();
+
+        return ResponseEntity.ok(UserResponseDTO.from(userRepository.save(user)));
     }
-    
+
     public ResponseEntity<?> uploadProfilePicture(Long userId, MultipartFile file) {
-        // RF001.3 - Upload foto (implementação básica)
-        Optional<User> userOptional = userRepository.findById(userId);
-        if (userOptional.isPresent()) {
-            User user = userOptional.get();
-            
-            // Aqui você salvaria o arquivo e guardaria o caminho
-            String filePath = "profile_pictures/" + userId + "_" + file.getOriginalFilename();
-            user.setProfilePicture(filePath);
-            
-            userRepository.save(user);
-            return ResponseEntity.ok("Foto atualizada com sucesso");
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body("Arquivo não informado");
         }
-        return ResponseEntity.notFound().build();
+
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType)) {
+            return ResponseEntity.badRequest().body("Tipo de arquivo inválido. Permitido: JPEG, PNG, WEBP");
+        }
+
+        if (file.getSize() > MAX_FILE_SIZE) {
+            return ResponseEntity.badRequest().body("Arquivo excede o tamanho máximo de 5 MB");
+        }
+
+        Optional<User> userOptional = userRepository.findById(userId);
+        if (userOptional.isEmpty()) return ResponseEntity.notFound().build();
+
+        User user = userOptional.get();
+        // Sanitiza o nome do arquivo original antes de compor o path
+        String originalName = file.getOriginalFilename() != null
+                ? file.getOriginalFilename().replaceAll("[^a-zA-Z0-9._-]", "_")
+                : "photo";
+        user.setProfilePicture("profile_pictures/" + userId + "_" + originalName);
+
+        userRepository.save(user);
+        return ResponseEntity.ok("Foto atualizada com sucesso");
     }
-    
+
     public ResponseEntity<?> deleteUser(Long userId) {
-        // RF001.3 - Excluir conta
-        Optional<User> user = userRepository.findById(userId);
-        if (user.isPresent()) {
+        if (userRepository.existsById(userId)) {
             userRepository.deleteById(userId);
             return ResponseEntity.ok("Conta excluída com sucesso");
         }
