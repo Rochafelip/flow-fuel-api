@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.refuel;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -44,6 +45,7 @@ public class Refuel {
     @Column(name = "full_tank")
     private Boolean fullTank = false;
 
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "vehicle_id", nullable = false)
     private Vehicle vehicle;

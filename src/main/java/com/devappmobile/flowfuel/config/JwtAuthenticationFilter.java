@@ -26,6 +26,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        // getServletPath() é vazio no MockMvc (ainda não processado pelo DispatcherServlet);
+        // getRequestURI() é sempre confiável em ambos os ambientes.
+        String path = request.getRequestURI();
+        return path.equals("/api/auth/register")
+                || path.equals("/api/auth/login")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/swagger-ui")
+                || path.equals("/swagger-ui.html")
+                || path.equals("/");
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
