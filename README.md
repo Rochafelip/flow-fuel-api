@@ -8,7 +8,7 @@ Aplicação Spring Boot para gerenciamento de combustível: cadastro/login de us
 
 - **Java:** 21
 - **Framework:** Spring Boot 3.5.7 (Web, Data JPA, Security, Validation)
-- **Autenticação:** JWT (jjwt 0.11.5) via filtro próprio. Refresh token em construção (ver [ADR-003](Claude/adr/ADR-003-autenticacao-jwt.md)) — entidade e migration já no repo.
+- **Autenticação:** JWT (jjwt 0.11.5) com par `accessToken` (15 min) + `refreshToken` (30 dias, opaco, hashado no banco), rotação com detecção de re-uso e job diário de cleanup. Detalhes em [ADR-003](Claude/adr/ADR-003-autenticacao-jwt.md).
 - **Banco:** PostgreSQL (runtime, Flyway) / H2 (testes e dev)
 - **Erros:** [RFC 7807 Problem Details](https://datatracker.ietf.org/doc/html/rfc7807) com catálogo de códigos estável ([ErrorCode.java](src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java)) — ver seção "Tratamento de erros" abaixo.
 - **Observabilidade:** logs JSON estruturados (Logstash encoder) em produção, com MDC `requestId`/`userId`; Sentry como sink de erros 5xx (ver [ADR-008](Claude/adr/ADR-008-observabilidade-logs-sentry.md)).
@@ -74,6 +74,8 @@ Fluxo de **par de tokens** ([ADR-003](Claude/adr/ADR-003-autenticacao-jwt.md)):
 - Armazenado no banco como SHA-256 (plaintext nunca é persistido).
 - **Rotação** a cada `/refresh`: o token anterior é revogado e encadeado ao novo.
 - **Detecção de re-uso**: se um `refreshToken` já revogado for apresentado, todas as sessões do usuário são invalidadas — possível sinal de comprometimento.
+- **Troca de senha** (`PUT /{userId}/password`) revoga todas as sessões ativas — o usuário precisa logar novamente em todos os dispositivos.
+- **Cleanup automático**: job `@Scheduled` diário (default `0 0 3 * * *`) remove refresh tokens cuja `revoked_at`/`expires_at` é mais antiga que `flowfuel.refresh-token.cleanup.retention-days` (default 30). Configurável via env vars `REFRESH_TOKEN_CLEANUP_CRON`, `REFRESH_TOKEN_RETENTION_DAYS`, `REFRESH_TOKEN_CLEANUP_ENABLED`.
 
 ### Header de correlação
 
