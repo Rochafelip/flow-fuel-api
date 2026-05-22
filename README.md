@@ -141,6 +141,48 @@ curl -X POST http://localhost:8080/api/vehicles \
 | ------ | ------------------------ | -------------------------------- |
 | GET    | `/vehicle/{vehicleId}`   | Métricas de consumo do veículo   |
 
+## Tratamento de erros
+
+A API responde erros no formato [RFC 7807 — Problem Details](https://datatracker.ietf.org/doc/html/rfc7807), com extensões para correlação:
+
+```json
+{
+  "type": "https://flowfuel.app/errors/VEHICLE_NOT_FOUND",
+  "title": "Recurso não encontrado",
+  "status": 404,
+  "detail": "Veículo não encontrado: 42",
+  "instance": "/api/v1/vehicles/42",
+  "code": "VEHICLE_NOT_FOUND",
+  "requestId": "8f3c9a1e-2b4d-4f7a-9c3e-1a2b3c4d5e6f",
+  "timestamp": "2026-05-22T15:30:00-03:00"
+}
+```
+
+- **`code`** — identificador estável e machine-readable do erro. Use para tratar fluxos no cliente; não traduza a partir do `title`/`detail`.
+- **`requestId`** — id único da requisição, também devolvido no header `X-Request-Id`. O mesmo id aparece nos logs do backend e nos eventos do Sentry — peça esse id ao usuário quando reportar problema.
+- **`type`** — URI estável apontando para a doc do `code`.
+
+### Catálogo de erros (`ErrorCode`)
+
+Fonte única em [ErrorCode.java](src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java). Adicione novos códigos lá quando criar uma nova condição de erro.
+
+| Código                     | HTTP | Quando ocorre                                                                                    |
+| -------------------------- | ---- | ------------------------------------------------------------------------------------------------ |
+| `VALIDATION_FAILED`        | 400  | Bean Validation falhou (`@Valid`, `@NotBlank`, etc.). O body inclui um array `errors` por campo. |
+| `BUSINESS_RULE_VIOLATED`   | 400  | Regra de negócio violada (ex.: odômetro retrocedendo, arquivo acima do tamanho máximo).          |
+| `REQUEST_MALFORMED`        | 400  | JSON do body inválido ou ausente.                                                                |
+| `AUTH_REQUIRED`            | 401  | Endpoint protegido acessado sem header `Authorization: Bearer ...`.                              |
+| `AUTH_BAD_CREDENTIALS`     | 401  | Email/senha inválidos no `POST /api/v1/auth/login`.                                              |
+| `AUTH_TOKEN_INVALID`       | 401  | JWT malformado, com assinatura inválida ou expirado.                                             |
+| `AUTH_REFRESH_INVALID`     | 401  | Refresh token não encontrado ou desconhecido.                                                    |
+| `AUTH_REFRESH_EXPIRED`     | 401  | Refresh token passou da janela de validade.                                                      |
+| `AUTH_REFRESH_REVOKED`     | 401  | Refresh token já foi revogado (logout, troca de senha ou detecção de re-uso).                    |
+| `FORBIDDEN_OPERATION`      | 403  | Usuário autenticado tentando operar recurso de outro usuário.                                    |
+| `RESOURCE_NOT_FOUND`       | 404  | Recurso solicitado não existe (veículo, abastecimento, usuário).                                 |
+| `CONFLICT`                 | 409  | Conflito genérico de estado.                                                                     |
+| `EMAIL_ALREADY_REGISTERED` | 409  | Tentativa de registro/atualização com email já em uso.                                           |
+| `INTERNAL_ERROR`           | 500  | Erro inesperado no servidor. Use o `requestId` para localizar no Sentry.                         |
+
 ## Observações
 
 - Todo `Vehicle` é vinculado a um `User` (`@ManyToOne nullable = false`).

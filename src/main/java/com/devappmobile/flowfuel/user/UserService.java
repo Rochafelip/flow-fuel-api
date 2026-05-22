@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.config.JwtUtil;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ConflictException;
@@ -25,7 +26,7 @@ public class UserService {
 
     public UserResponseDTO register(UserRegisterDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
-            throw new ConflictException("Email já cadastrado");
+            throw new ConflictException(ErrorCode.EMAIL_ALREADY_REGISTERED, "Email já cadastrado");
         }
 
         User user = new User();
@@ -58,7 +59,7 @@ public class UserService {
 
         if (dto.getEmail() != null && !dto.getEmail().equals(user.getEmail())) {
             if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
-                throw new ConflictException("Email já cadastrado");
+                throw new ConflictException(ErrorCode.EMAIL_ALREADY_REGISTERED, "Email já cadastrado");
             }
             user.setEmail(dto.getEmail());
         }

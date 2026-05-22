@@ -1,32 +1,40 @@
 package com.devappmobile.flowfuel.config;
 
+import com.devappmobile.flowfuel.common.error.ErrorCode;
+import com.devappmobile.flowfuel.common.error.ProblemDetailWriter;
 import com.devappmobile.flowfuel.user.UserRepository;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import io.jsonwebtoken.JwtException;
-import java.io.PrintWriter;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
 import java.io.IOException;
 import java.util.Collections;
-import java.util.Enumeration;
 
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+    private static final String MDC_USER_ID = "userId";
+
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
 
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         // getServletPath() é vazio no MockMvc (ainda não processado pelo DispatcherServlet);
         // getRequestURI() é sempre confiável em ambos os ambientes.
         String path = request.getRequestURI();
@@ -39,16 +47,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            // quando Authorization ausente/inválido, retornar JSON detalhado
-            writeDetailedError(response, request, "Acesso negado",
-                    "Full authentication is required to access this resource");
+            log.warn("Acesso sem Bearer code={} method={} path={}",
+                    ErrorCode.AUTH_REQUIRED.code(), request.getMethod(), request.getRequestURI());
+            ProblemDetailWriter.write(response, request.getRequestURI(),
+                    ErrorCode.AUTH_REQUIRED,
+                    "Autenticação necessária para acessar este recurso");
             return;
         }
 
@@ -64,78 +74,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")));
                         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authToken);
+                        if (user.getId() != null) {
+                            MDC.put(MDC_USER_ID, user.getId().toString());
+                        }
                     });
                 }
             }
 
-            filterChain.doFilter(request, response);
-        } catch (JwtException | IllegalArgumentException ex) {
-            String msg = ex.getMessage() == null ? "Token inválido" : ex.getMessage();
-            writeDetailedError(response, request, "Acesso negado", msg);
-            return;
-        }
-    }
-
-    private void writeDetailedError(HttpServletResponse response, HttpServletRequest request, String errorLabel,
-            String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json;charset=UTF-8");
-        try (PrintWriter out = response.getWriter()) {
-            StringBuilder sb = new StringBuilder();
-            sb.append('{');
-            sb.append('"').append("error").append('"').append(':');
-            sb.append('"').append(escapeJson(errorLabel)).append('"').append(',');
-            sb.append('"').append("message").append('"').append(':');
-            sb.append('"').append(escapeJson(message)).append('"').append(',');
-            sb.append('"').append("timestamp").append('"').append(':');
-            sb.append(System.currentTimeMillis()).append(',');
-
-            sb.append('"').append("request").append('"').append(':').append('{');
-            sb.append('"').append("method").append('"').append(':');
-            sb.append('"').append(escapeJson(request.getMethod())).append('"').append(',');
-            sb.append('"').append("uri").append('"').append(':');
-            sb.append('"').append(escapeJson(request.getRequestURI())).append('"').append(',');
-            sb.append('"').append("query").append('"').append(':');
-            sb.append('"').append(escapeJson(request.getQueryString())).append('"').append(',');
-            sb.append('"').append("remoteAddr").append('"').append(':');
-            sb.append('"').append(escapeJson(request.getRemoteAddr())).append('"').append(',');
-
-            sb.append('"').append("headers").append('"').append(':').append('{');
-            Enumeration<String> headerNames = request.getHeaderNames();
-            boolean firstHeader = true;
-            while (headerNames != null && headerNames.hasMoreElements()) {
-                String name = headerNames.nextElement();
-                if ("Authorization".equalsIgnoreCase(name)) {
-                    continue; // não incluir Authorization
-                }
-                if (!firstHeader)
-                    sb.append(',');
-                firstHeader = false;
-                sb.append('"').append(escapeJson(name)).append('"').append(':');
-                sb.append('[');
-                Enumeration<String> values = request.getHeaders(name);
-                boolean firstVal = true;
-                while (values != null && values.hasMoreElements()) {
-                    if (!firstVal)
-                        sb.append(',');
-                    firstVal = false;
-                    sb.append('"').append(escapeJson(values.nextElement())).append('"');
-                }
-                sb.append(']');
+            try {
+                filterChain.doFilter(request, response);
+            } finally {
+                MDC.remove(MDC_USER_ID);
             }
-            sb.append('}'); // end headers
-
-            sb.append('}'); // end request
-            sb.append('}'); // end root
-
-            out.write(sb.toString());
-            out.flush();
+        } catch (JwtException | IllegalArgumentException ex) {
+            log.warn("Token JWT invalido code={} method={} path={} reason={}",
+                    ErrorCode.AUTH_TOKEN_INVALID.code(), request.getMethod(),
+                    request.getRequestURI(), ex.getMessage());
+            ProblemDetailWriter.write(response, request.getRequestURI(),
+                    ErrorCode.AUTH_TOKEN_INVALID,
+                    ex.getMessage() != null ? ex.getMessage() : "Token inválido");
         }
-    }
-
-    private static String escapeJson(String s) {
-        if (s == null)
-            return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
     }
 }
