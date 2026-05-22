@@ -1,13 +1,11 @@
 package com.devappmobile.flowfuel.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.devappmobile.flowfuel.common.error.ErrorCode;
+import com.devappmobile.flowfuel.common.error.ProblemDetailWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ProblemDetail;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -20,9 +18,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
-
-import java.net.URI;
-import java.time.OffsetDateTime;
 
 @Configuration
 @EnableWebSecurity
@@ -79,32 +74,18 @@ public class SecurityConfig {
     }
 
     private AuthenticationEntryPoint problemDetailAuthEntryPoint() {
-        return (request, response, authException) -> writeProblemDetail(
+        return (request, response, authException) -> ProblemDetailWriter.write(
                 response, request.getRequestURI(),
-                HttpStatus.UNAUTHORIZED,
-                "Não autenticado",
+                ErrorCode.AUTH_REQUIRED,
                 authException.getMessage() != null ? authException.getMessage()
                         : "Autenticação necessária para acessar este recurso");
     }
 
     private AccessDeniedHandler problemDetailAccessDeniedHandler() {
-        return (request, response, accessDeniedException) -> writeProblemDetail(
+        return (request, response, accessDeniedException) -> ProblemDetailWriter.write(
                 response, request.getRequestURI(),
-                HttpStatus.FORBIDDEN,
-                "Acesso negado",
+                ErrorCode.FORBIDDEN_OPERATION,
                 accessDeniedException.getMessage() != null ? accessDeniedException.getMessage()
                         : "Você não tem permissão para acessar este recurso");
-    }
-
-    private static void writeProblemDetail(jakarta.servlet.http.HttpServletResponse response,
-            String path, HttpStatus status, String title, String detail) throws java.io.IOException {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(status, detail);
-        pd.setTitle(title);
-        if (path != null) pd.setInstance(URI.create(path));
-        pd.setProperty("timestamp", OffsetDateTime.now().toString());
-
-        response.setStatus(status.value());
-        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        new ObjectMapper().writeValue(response.getWriter(), pd);
     }
 }

@@ -1,16 +1,15 @@
 package com.devappmobile.flowfuel.config;
 
-import com.devappmobile.flowfuel.exception.BusinessRuleException;
-import com.devappmobile.flowfuel.exception.ConflictException;
-import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
-import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
+import com.devappmobile.flowfuel.common.error.AppException;
+import com.devappmobile.flowfuel.common.error.ErrorCode;
+import com.devappmobile.flowfuel.common.error.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -34,30 +33,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ProblemDetail> handleNotFound(ResourceNotFoundException ex, HttpServletRequest req) {
-        return build(HttpStatus.NOT_FOUND, "Recurso não encontrado", ex.getMessage(), req);
-    }
+    /** URI base dos tipos de erro. Apontara para uma pagina de catalogo no futuro. */
+    private static final String ERROR_TYPE_BASE = "https://flowfuel.app/errors/";
 
-    @ExceptionHandler(ForbiddenOperationException.class)
-    public ResponseEntity<ProblemDetail> handleForbidden(ForbiddenOperationException ex, HttpServletRequest req) {
-        return build(HttpStatus.FORBIDDEN, "Operação não permitida", ex.getMessage(), req);
-    }
-
-    @ExceptionHandler(BusinessRuleException.class)
-    public ResponseEntity<ProblemDetail> handleBusinessRule(BusinessRuleException ex, HttpServletRequest req) {
-        return build(HttpStatus.BAD_REQUEST, "Regra de negócio violada", ex.getMessage(), req);
-    }
-
-    @ExceptionHandler(ConflictException.class)
-    public ResponseEntity<ProblemDetail> handleConflict(ConflictException ex, HttpServletRequest req) {
-        return build(HttpStatus.CONFLICT, "Conflito", ex.getMessage(), req);
+    @ExceptionHandler(AppException.class)
+    public ResponseEntity<ProblemDetail> handleAppException(AppException ex, HttpServletRequest req) {
+        ErrorCode code = ex.getErrorCode();
+        logClientError(code, req, ex.getMessage());
+        return build(code, ex.getMessage(), req.getRequestURI());
     }
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ProblemDetail> handleBadCredentials(BadCredentialsException ex, HttpServletRequest req) {
-        return build(HttpStatus.UNAUTHORIZED, "Credenciais inválidas",
-                ex.getMessage() != null ? ex.getMessage() : "Email ou senha inválidos", req);
+        String detail = ex.getMessage() != null ? ex.getMessage() : "Email ou senha inválidos";
+        logClientError(ErrorCode.AUTH_BAD_CREDENTIALS, req, detail);
+        return build(ErrorCode.AUTH_BAD_CREDENTIALS, detail, req.getRequestURI());
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -66,10 +56,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         List<Map<String, String>> errors = ex.getConstraintViolations().stream()
                 .map(this::violationToMap)
                 .toList();
-        ProblemDetail pd = problemDetail(HttpStatus.BAD_REQUEST, "Parâmetros inválidos",
-                "Um ou mais parâmetros são inválidos", req);
+        logClientError(ErrorCode.VALIDATION_FAILED, req, "Constraint violation");
+        ProblemDetail pd = problemDetail(ErrorCode.VALIDATION_FAILED,
+                "Um ou mais parâmetros são inválidos", req.getRequestURI());
         pd.setProperty("errors", errors);
-        return ResponseEntity.badRequest().body(pd);
+        return ResponseEntity.status(ErrorCode.VALIDATION_FAILED.status()).body(pd);
     }
 
     @Override
@@ -83,44 +74,68 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                     return m;
                 })
                 .toList();
-        ProblemDetail pd = problemDetail(HttpStatus.BAD_REQUEST, "Validação falhou",
-                "Um ou mais campos são inválidos", pathFromRequest(request));
+        String path = pathFromRequest(request);
+        logClientError(ErrorCode.VALIDATION_FAILED, path, "Method argument not valid");
+        ProblemDetail pd = problemDetail(ErrorCode.VALIDATION_FAILED,
+                "Um ou mais campos são inválidos", path);
         pd.setProperty("errors", errors);
-        return ResponseEntity.badRequest().body(pd);
+        return ResponseEntity.status(ErrorCode.VALIDATION_FAILED.status()).body(pd);
     }
 
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(@NonNull HttpMessageNotReadableException ex,
             @NonNull HttpHeaders headers, @NonNull HttpStatusCode status, @NonNull WebRequest request) {
-        ProblemDetail pd = problemDetail(HttpStatus.BAD_REQUEST, "Requisição malformada",
-                "Corpo da requisição inválido ou ausente", pathFromRequest(request));
-        return ResponseEntity.badRequest().body(pd);
+        String path = pathFromRequest(request);
+        logClientError(ErrorCode.REQUEST_MALFORMED, path, "Body not readable");
+        ProblemDetail pd = problemDetail(ErrorCode.REQUEST_MALFORMED,
+                "Corpo da requisição inválido ou ausente", path);
+        return ResponseEntity.status(ErrorCode.REQUEST_MALFORMED.status()).body(pd);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ProblemDetail> handleGeneric(Exception ex, HttpServletRequest req) {
-        log.error("Erro não tratado em {} {}", req.getMethod(), req.getRequestURI(), ex);
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno",
-                "Ocorreu um erro inesperado", req);
+        log.error("Erro nao tratado method={} path={} code={}",
+                req.getMethod(), req.getRequestURI(), ErrorCode.INTERNAL_ERROR.code(), ex);
+        return build(ErrorCode.INTERNAL_ERROR, "Ocorreu um erro inesperado", req.getRequestURI());
     }
 
-    private ResponseEntity<ProblemDetail> build(HttpStatus status, String title, String detail,
-            HttpServletRequest req) {
-        return ResponseEntity.status(status).body(problemDetail(status, title, detail, req.getRequestURI()));
+    private ResponseEntity<ProblemDetail> build(ErrorCode code, String detail, String path) {
+        return ResponseEntity.status(code.status()).body(problemDetail(code, detail, path));
     }
 
-    private ProblemDetail problemDetail(HttpStatus status, String title, String detail, HttpServletRequest req) {
-        return problemDetail(status, title, detail, req.getRequestURI());
-    }
-
-    private ProblemDetail problemDetail(HttpStatus status, String title, String detail, String path) {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(status, detail);
-        pd.setTitle(title);
+    private ProblemDetail problemDetail(ErrorCode code, String detail, String path) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(code.status(), detail);
+        pd.setTitle(code.title());
+        pd.setType(URI.create(ERROR_TYPE_BASE + code.code()));
         if (path != null) {
             pd.setInstance(URI.create(path));
         }
+        pd.setProperty("code", code.code());
         pd.setProperty("timestamp", OffsetDateTime.now().toString());
+        String requestId = MDC.get(RequestIdFilter.MDC_KEY);
+        if (requestId != null) {
+            pd.setProperty("requestId", requestId);
+        }
         return pd;
+    }
+
+    private void logClientError(ErrorCode code, HttpServletRequest req, String detail) {
+        logClientError(code, req.getRequestURI(), req.getMethod(), detail);
+    }
+
+    private void logClientError(ErrorCode code, String path, String detail) {
+        logClientError(code, path, null, detail);
+    }
+
+    private void logClientError(ErrorCode code, String path, String method, String detail) {
+        // 4xx esperados: WARN. Nunca enviar pra Sentry (config via sentry.logging.minimum-event-level=error).
+        if (method != null) {
+            log.warn("Erro de cliente code={} status={} method={} path={} detail={}",
+                    code.code(), code.status().value(), method, path, detail);
+        } else {
+            log.warn("Erro de cliente code={} status={} path={} detail={}",
+                    code.code(), code.status().value(), path, detail);
+        }
     }
 
     private String pathFromRequest(WebRequest request) {
