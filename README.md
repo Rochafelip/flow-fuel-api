@@ -8,8 +8,10 @@ Aplicação Spring Boot para gerenciamento de combustível: cadastro/login de us
 
 - **Java:** 21
 - **Framework:** Spring Boot 3.5.7 (Web, Data JPA, Security, Validation)
-- **Autenticação:** JWT (jjwt 0.11.5) via filtro próprio
-- **Banco:** PostgreSQL (runtime) / H2 (testes)
+- **Autenticação:** JWT (jjwt 0.11.5) via filtro próprio. Refresh token em construção (ver [ADR-003](Claude/adr/ADR-003-autenticacao-jwt.md)) — entidade e migration já no repo.
+- **Banco:** PostgreSQL (runtime, Flyway) / H2 (testes e dev)
+- **Erros:** [RFC 7807 Problem Details](https://datatracker.ietf.org/doc/html/rfc7807) com catálogo de códigos estável ([ErrorCode.java](src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java)) — ver seção "Tratamento de erros" abaixo.
+- **Observabilidade:** logs JSON estruturados (Logstash encoder) em produção, com MDC `requestId`/`userId`; Sentry como sink de erros 5xx (ver [ADR-008](Claude/adr/ADR-008-observabilidade-logs-sentry.md)).
 - **Docs:** springdoc-openapi (Swagger UI)
 - **Build:** Maven
 - **Utilitários:** Lombok
@@ -53,27 +55,50 @@ Com a aplicação em execução, o Swagger UI fica disponível em:
 
 ## Autenticação
 
-1. Faça `POST /api/auth/login` com email e senha.
-2. A resposta retorna um JWT no body (`{"token": "..."}`) e também no header `Authorization: Bearer <token>`.
-3. Em endpoints protegidos, envie `Authorization: Bearer <token>`. O usuário autenticado é injetado nos controllers via `@AuthenticationPrincipal User user` — não é mais necessário enviar `userId` em headers.
+Fluxo de **par de tokens** ([ADR-003](Claude/adr/ADR-003-autenticacao-jwt.md)):
+
+1. `POST /api/v1/auth/login` com email e senha. A resposta devolve:
+   ```json
+   {
+     "accessToken": "<JWT, validade 15 min>",
+     "refreshToken": "<opaco, validade 30 dias>",
+     "expiresIn": 900
+   }
+   ```
+   O `accessToken` também vai no header `Authorization: Bearer <token>` da resposta.
+2. Em endpoints protegidos, envie `Authorization: Bearer <accessToken>`. O usuário autenticado é injetado via `@AuthenticationPrincipal User user`.
+3. Quando o `accessToken` expirar (cliente recebe 401), troque o par via `POST /api/v1/auth/refresh` enviando `{"refreshToken": "..."}` — a resposta tem o mesmo formato do login.
+4. Para encerrar a sessão, `POST /api/v1/auth/logout` com `{"refreshToken": "..."}` (autenticado com o `accessToken`).
+
+**Segurança do refresh token:**
+- Armazenado no banco como SHA-256 (plaintext nunca é persistido).
+- **Rotação** a cada `/refresh`: o token anterior é revogado e encadeado ao novo.
+- **Detecção de re-uso**: se um `refreshToken` já revogado for apresentado, todas as sessões do usuário são invalidadas — possível sinal de comprometimento.
+
+### Header de correlação
+
+Toda resposta (sucesso ou erro) inclui o header `X-Request-Id` com um UUID gerado pelo backend. O mesmo id aparece no campo `requestId` do body de erro, nos logs em produção e nas tags do Sentry — use-o ao reportar problemas.
 
 ## Endpoints principais
 
-### Autenticação e perfil — `/api/auth`
+### Autenticação e perfil — `/api/v1/auth`
 
-| Método | Path                                | Descrição                                 |
-| ------ | ----------------------------------- | ----------------------------------------- |
-| POST   | `/register`                         | Cria usuário                              |
-| POST   | `/login`                            | Autentica e retorna JWT                   |
-| GET    | `/{userId}/profile`                 | Retorna perfil                            |
-| PUT    | `/{userId}/profile`                 | Atualiza perfil                           |
-| POST   | `/{userId}/upload-profile-picture`  | Upload de foto (JPEG/PNG/WEBP, máx 5 MB)  |
-| DELETE | `/{userId}`                         | Exclui usuário                            |
+| Método | Path                                | Descrição                                              |
+| ------ | ----------------------------------- | ------------------------------------------------------ |
+| POST   | `/register`                         | Cria usuário                                           |
+| POST   | `/login`                            | Autentica e retorna par `accessToken` + `refreshToken` |
+| POST   | `/refresh`                          | Rotaciona o par de tokens                              |
+| POST   | `/logout`                           | Revoga o `refreshToken` da sessão atual                |
+| PUT    | `/{userId}/password`                | Troca a senha (revoga todas as sessões ativas)         |
+| GET    | `/{userId}/profile`                 | Retorna perfil                                         |
+| PUT    | `/{userId}/profile`                 | Atualiza perfil                                        |
+| POST   | `/{userId}/upload-profile-picture`  | Upload de foto (JPEG/PNG/WEBP, máx 5 MB)               |
+| DELETE | `/{userId}`                         | Exclui usuário                                         |
 
 Exemplo — registrar usuário:
 
 ```bash
-curl -X POST http://localhost:8080/api/auth/register \
+curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "usuario@exemplo.com",
@@ -86,9 +111,37 @@ curl -X POST http://localhost:8080/api/auth/register \
 Exemplo — login:
 
 ```bash
-curl -X POST http://localhost:8080/api/auth/login \
+curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "usuario@exemplo.com", "password": "senha123"}'
+# -> {"accessToken":"...","refreshToken":"...","expiresIn":900}
+```
+
+Exemplo — refresh:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "<refresh anterior>"}'
+```
+
+Exemplo — logout:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/logout \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "<refresh ativo>"}'
+```
+
+Exemplo — trocar senha:
+
+```bash
+curl -X PUT http://localhost:8080/api/v1/auth/<userId>/password \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"currentPassword": "senha123", "newPassword": "novaSenha123"}'
+# -> 204 No Content. Todos os refresh tokens ativos do usuário sao invalidados.
 ```
 
 ### Veículos — `/api/vehicles` (requer JWT)

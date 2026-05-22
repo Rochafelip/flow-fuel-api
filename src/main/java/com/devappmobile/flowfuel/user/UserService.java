@@ -23,6 +23,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenService refreshTokenService;
 
     public UserResponseDTO register(UserRegisterDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
@@ -38,13 +39,49 @@ public class UserService {
         return UserResponseDTO.from(userRepository.save(user));
     }
 
-    public LoginResponse login(String email, String password) {
+    public TokenPairResponse login(String email, String password) {
         User user = userRepository.findByEmail(email)
                 .filter(u -> passwordEncoder.matches(password, u.getPassword()))
                 .orElseThrow(() -> new BadCredentialsException("Email ou senha inválidos"));
 
-        String token = jwtUtil.generateToken(user.getEmail(), user.getId());
-        return new LoginResponse(token);
+        return issueTokenPair(user);
+    }
+
+    public TokenPairResponse refresh(String refreshToken) {
+        RefreshTokenService.RotationResult rotated = refreshTokenService.rotate(refreshToken);
+        String accessToken = jwtUtil.generateToken(rotated.user().getEmail(), rotated.user().getId());
+        return new TokenPairResponse(accessToken, rotated.newRefreshToken(),
+                jwtUtil.getAccessTokenTtlMs() / 1000);
+    }
+
+    public void logout(String refreshToken) {
+        refreshTokenService.revoke(refreshToken);
+    }
+
+    /**
+     * Troca a senha do usuario. Apos sucesso, revoga todas as sessoes ativas
+     * (refresh tokens) — o usuario precisa logar novamente em todos os dispositivos.
+     */
+    public void changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = findUserOrThrow(userId);
+
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new BadCredentialsException("Senha atual inválida");
+        }
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new BusinessRuleException("Nova senha deve ser diferente da atual");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        refreshTokenService.revokeAllForUser(userId);
+    }
+
+    private TokenPairResponse issueTokenPair(User user) {
+        String accessToken = jwtUtil.generateToken(user.getEmail(), user.getId());
+        String refreshToken = refreshTokenService.issue(user);
+        return new TokenPairResponse(accessToken, refreshToken,
+                jwtUtil.getAccessTokenTtlMs() / 1000);
     }
 
     public UserResponseDTO getUserProfile(Long userId) {

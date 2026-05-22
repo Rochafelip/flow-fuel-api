@@ -27,6 +27,7 @@ class UserServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private JwtUtil jwtUtil;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private RefreshTokenService refreshTokenService;
 
     @InjectMocks private UserService userService;
 
@@ -98,15 +99,19 @@ class UserServiceTest {
     // --- login ---
 
     @Test
-    void login_comCredenciaisValidas_retornaToken() {
+    void login_comCredenciaisValidas_retornaTokenPair() {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("senha123", "hashed_password")).thenReturn(true);
         when(jwtUtil.generateToken("test@example.com", 1L)).thenReturn("jwt-token-gerado");
+        when(jwtUtil.getAccessTokenTtlMs()).thenReturn(900_000L);
+        when(refreshTokenService.issue(existingUser)).thenReturn("refresh-plain");
 
-        LoginResponse response = userService.login("test@example.com", "senha123");
+        TokenPairResponse response = userService.login("test@example.com", "senha123");
 
         assertThat(response).isNotNull();
-        assertThat(response.getToken()).isEqualTo("jwt-token-gerado");
+        assertThat(response.accessToken()).isEqualTo("jwt-token-gerado");
+        assertThat(response.refreshToken()).isEqualTo("refresh-plain");
+        assertThat(response.expiresIn()).isEqualTo(900L);
     }
 
     @Test
@@ -176,6 +181,43 @@ class UserServiceTest {
 
         assertThat(response).isEqualTo("Foto atualizada com sucesso");
         assertThat(existingUser.getProfilePicture()).isEqualTo("profile_pictures/1_foto.jpg");
+    }
+
+    // --- changePassword ---
+
+    @Test
+    void changePassword_comSenhaAtualCorreta_atualizaSenhaERevogaRefreshTokens() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("senha_atual", "hashed_password")).thenReturn(true);
+        when(passwordEncoder.matches("senha_nova", "hashed_password")).thenReturn(false);
+        when(passwordEncoder.encode("senha_nova")).thenReturn("hash_nova");
+
+        userService.changePassword(1L, "senha_atual", "senha_nova");
+
+        verify(userRepository).save(argThat(u -> u.getPassword().equals("hash_nova")));
+        verify(refreshTokenService).revokeAllForUser(1L);
+    }
+
+    @Test
+    void changePassword_comSenhaAtualErrada_lancaBadCredentialsSemAlterar() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("errada", "hashed_password")).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.changePassword(1L, "errada", "senha_nova"))
+                .isInstanceOf(BadCredentialsException.class);
+        verify(userRepository, never()).save(any());
+        verify(refreshTokenService, never()).revokeAllForUser(any());
+    }
+
+    @Test
+    void changePassword_comNovaSenhaIgualAtual_lancaBusinessRule() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("mesma", "hashed_password")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.changePassword(1L, "mesma", "mesma"))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(userRepository, never()).save(any());
+        verify(refreshTokenService, never()).revokeAllForUser(any());
     }
 
     // --- deleteUser ---

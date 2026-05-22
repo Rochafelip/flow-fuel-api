@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
@@ -23,6 +25,7 @@ public class RefreshToken {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private User user;
 
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)

@@ -13,10 +13,16 @@ import java.util.Date;
 public class JwtUtil {
 
     private final SecretKey secretKey;
-    private static final long EXPIRATION_TIME = 86400000; // 24 horas
+    private final long accessTokenTtlMs;
 
-    public JwtUtil(@Value("${jwt.secret}") String secret) {
+    public JwtUtil(@Value("${jwt.secret}") String secret,
+            @Value("${jwt.access-token-ttl-ms:900000}") long accessTokenTtlMs) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.accessTokenTtlMs = accessTokenTtlMs;
+    }
+
+    public long getAccessTokenTtlMs() {
+        return accessTokenTtlMs;
     }
 
     public String generateToken(String email, Long userId) {
@@ -24,7 +30,7 @@ public class JwtUtil {
                 .setSubject(email)
                 .claim("userId", userId)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .setExpiration(new Date(System.currentTimeMillis() + accessTokenTtlMs))
                 .signWith(secretKey)
                 .compact();
     }

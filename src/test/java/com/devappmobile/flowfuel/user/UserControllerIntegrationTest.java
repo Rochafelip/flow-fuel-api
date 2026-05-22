@@ -46,7 +46,7 @@ class UserControllerIntegrationTest {
                         """.formatted(email, password)))
                 .andExpect(status().isOk())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString()).get("token").asText();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
     }
 
     @Test
@@ -88,7 +88,7 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void login_comCredenciaisValidas_retornaTokenNoCorpo() throws Exception {
+    void login_comCredenciaisValidas_retornaTokenPair() throws Exception {
         registrar("login@test.com", "senha123");
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
@@ -100,7 +100,203 @@ class UserControllerIntegrationTest {
                 .andReturn();
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
-        assertThat(body.get("token").asText()).isNotBlank();
+        assertThat(body.get("accessToken").asText()).isNotBlank();
+        assertThat(body.get("refreshToken").asText()).isNotBlank();
+        assertThat(body.get("expiresIn").asLong()).isPositive();
+    }
+
+    @Test
+    void refresh_comTokenValido_rotacionaParEoAntigoFicaInvalido() throws Exception {
+        registrar("refresh@test.com", "senha123");
+
+        JsonNode initial = objectMapper.readTree(
+                mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"refresh@test.com","password":"senha123"}
+                                """))
+                        .andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString());
+
+        String originalRefresh = initial.get("refreshToken").asText();
+
+        // Primeiro refresh: deve emitir um novo par.
+        JsonNode rotated = objectMapper.readTree(
+                mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken":"%s"}
+                                """.formatted(originalRefresh)))
+                        .andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString());
+
+        assertThat(rotated.get("accessToken").asText()).isNotBlank();
+        assertThat(rotated.get("refreshToken").asText())
+                .isNotBlank()
+                .isNotEqualTo(originalRefresh);
+
+        // Reutilizar o refresh antigo deve disparar 401 (cadeia revogada).
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"refreshToken":"%s"}
+                        """.formatted(originalRefresh)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void refresh_comTokenDesconhecido_retorna401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"refreshToken":"token-que-nunca-existiu"}
+                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void changePassword_comSenhaAtualCorreta_204ERevogaRefresh() throws Exception {
+        registrar("trocasenha@test.com", "senha123");
+        JsonNode pair = objectMapper.readTree(
+                mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"trocasenha@test.com","password":"senha123"}
+                                """))
+                        .andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString());
+        String access = pair.get("accessToken").asText();
+        String refresh = pair.get("refreshToken").asText();
+        long userId = pair.get("expiresIn").asLong() > 0 ? extractUserId(access) : 0;
+
+        mockMvc.perform(put("/api/v1/auth/" + userId + "/password")
+                .header("Authorization", "Bearer " + access)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"currentPassword":"senha123","newPassword":"novaSenha123"}
+                        """))
+                .andExpect(status().isNoContent());
+
+        // Refresh anterior deve ter sido invalidado.
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"refreshToken":"%s"}
+                        """.formatted(refresh)))
+                .andExpect(status().isUnauthorized());
+
+        // Login com senha antiga falha.
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"trocasenha@test.com","password":"senha123"}
+                        """))
+                .andExpect(status().isUnauthorized());
+
+        // Login com senha nova funciona.
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"trocasenha@test.com","password":"novaSenha123"}
+                        """))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void changePassword_comSenhaAtualErrada_401() throws Exception {
+        registrar("senhaerrada@test.com", "senha123");
+        JsonNode pair = objectMapper.readTree(
+                mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"senhaerrada@test.com","password":"senha123"}
+                                """))
+                        .andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString());
+        String access = pair.get("accessToken").asText();
+        long userId = extractUserId(access);
+
+        mockMvc.perform(put("/api/v1/auth/" + userId + "/password")
+                .header("Authorization", "Bearer " + access)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"currentPassword":"errada","newPassword":"novaSenha123"}
+                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void changePassword_paraOutroUsuario_403() throws Exception {
+        registrar("a@test.com", "senha123");
+        String accessA = objectMapper.readTree(
+                mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"a@test.com","password":"senha123"}
+                                """))
+                        .andReturn().getResponse().getContentAsString())
+                .get("accessToken").asText();
+
+        registrar("vitima@test.com", "senha123");
+        String accessVitima = objectMapper.readTree(
+                mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"vitima@test.com","password":"senha123"}
+                                """))
+                        .andReturn().getResponse().getContentAsString())
+                .get("accessToken").asText();
+        long vitimaId = extractUserId(accessVitima);
+
+        mockMvc.perform(put("/api/v1/auth/" + vitimaId + "/password")
+                .header("Authorization", "Bearer " + accessA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"currentPassword":"senha123","newPassword":"novaSenha123"}
+                        """))
+                .andExpect(status().isForbidden());
+    }
+
+    private long extractUserId(String accessToken) {
+        // O JWT carrega userId no payload (claim).
+        String payload = new String(java.util.Base64.getUrlDecoder()
+                .decode(accessToken.split("\\.")[1]));
+        try {
+            return objectMapper.readTree(payload).get("userId").asLong();
+        } catch (Exception e) {
+            throw new IllegalStateException("token inesperado", e);
+        }
+    }
+
+    @Test
+    void logout_invalidaORefreshToken() throws Exception {
+        registrar("logout@test.com", "senha123");
+        JsonNode pair = objectMapper.readTree(
+                mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"logout@test.com","password":"senha123"}
+                                """))
+                        .andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString());
+        String access = pair.get("accessToken").asText();
+        String refresh = pair.get("refreshToken").asText();
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                .header("Authorization", "Bearer " + access)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"refreshToken":"%s"}
+                        """.formatted(refresh)))
+                .andExpect(status().isNoContent());
+
+        // Apos logout, o refresh nao deve ser aceito.
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"refreshToken":"%s"}
+                        """.formatted(refresh)))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

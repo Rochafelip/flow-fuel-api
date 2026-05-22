@@ -22,12 +22,32 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest loginRequest) {
-        LoginResponse loginResponse = userService.login(loginRequest.getEmail(), loginRequest.getPassword());
+    public ResponseEntity<TokenPairResponse> login(@RequestBody LoginRequest loginRequest) {
+        TokenPairResponse tokens = userService.login(loginRequest.getEmail(), loginRequest.getPassword());
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + loginResponse.getToken());
-        return ResponseEntity.ok().headers(headers).body(loginResponse);
+        headers.set("Authorization", "Bearer " + tokens.accessToken());
+        return ResponseEntity.ok().headers(headers).body(tokens);
+    }
+
+    @PostMapping("/refresh")
+    public TokenPairResponse refresh(@Valid @RequestBody RefreshRequest request) {
+        return userService.refresh(request.refreshToken());
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequest request) {
+        userService.logout(request.refreshToken());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{userId}/password")
+    public ResponseEntity<Void> changePassword(@PathVariable Long userId,
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal User authUser) {
+        ensureSelf(authUser, userId);
+        userService.changePassword(userId, request.currentPassword(), request.newPassword());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{userId}/upload-profile-picture")

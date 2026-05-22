@@ -45,7 +45,7 @@ class DashboardControllerIntegrationTest {
                         {"email":"%s","password":"senha123"}
                         """.formatted(email)))
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString()).get("token").asText();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
     }
 
     private long criarVeiculo(String token) throws Exception {
