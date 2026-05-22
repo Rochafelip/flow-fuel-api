@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@DataJpaTest
+@DataJpaTest(properties = "flowfuel.refresh-token.cleanup.enabled=true")
 @Import({RefreshTokenService.class, RefreshTokenCleanupJob.class})
 class RefreshTokenCleanupJobTest {
 
