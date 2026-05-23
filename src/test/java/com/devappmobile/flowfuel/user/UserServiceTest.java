@@ -4,6 +4,7 @@ import com.devappmobile.flowfuel.config.JwtUtil;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ConflictException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
+import com.devappmobile.flowfuel.storage.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +29,7 @@ class UserServiceTest {
     @Mock private JwtUtil jwtUtil;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
+    @Mock private StorageService storageService;
 
     @InjectMocks private UserService userService;
 
@@ -181,6 +183,33 @@ class UserServiceTest {
 
         assertThat(response).isEqualTo("Foto atualizada com sucesso");
         assertThat(existingUser.getProfilePicture()).isEqualTo("profile_pictures/1_foto.jpg");
+    }
+
+    @Test
+    void uploadProfilePictureResponse_comImagemValida_retornaUrls() {
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(any())).thenReturn(existingUser);
+        when(storageService.getUrl("profile_pictures/1_foto.jpg")).thenReturn("https://signed-url.example.com/profile_pictures/1_foto.jpg");
+
+        UploadResponse response = userService.uploadProfilePictureResponse(1L, file);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getInternalUrl()).isEqualTo("/auth/1/profile-picture");
+        assertThat(response.getSignedUrl()).isEqualTo("https://signed-url.example.com/profile_pictures/1_foto.jpg");
+        assertThat(existingUser.getProfilePicture()).isEqualTo("profile_pictures/1_foto.jpg");
+    }
+
+    @Test
+    void getUserProfile_retornaProfilePictureUrl() {
+        existingUser.setProfilePicture("profile_pictures/1_foto.jpg");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(storageService.getUrl("profile_pictures/1_foto.jpg")).thenReturn("https://signed-url.example.com/profile_pictures/1_foto.jpg");
+
+        UserResponseDTO response = userService.getUserProfile(1L);
+
+        assertThat(response.getProfilePicture()).isEqualTo("/auth/1/profile-picture");
+        assertThat(response.getProfilePictureUrl()).isEqualTo("https://signed-url.example.com/profile_pictures/1_foto.jpg");
     }
 
     // --- changePassword ---

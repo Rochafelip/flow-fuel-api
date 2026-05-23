@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserController {
 
     private final UserService userService;
+    private final com.devappmobile.flowfuel.storage.StorageService storageService;
 
     @PostMapping("/register")
     public UserResponseDTO register(@Valid @RequestBody UserRegisterDTO dto) {
@@ -51,11 +52,31 @@ public class UserController {
     }
 
     @PostMapping("/{userId}/upload-profile-picture")
-    public String uploadProfilePicture(@PathVariable Long userId,
+    public UploadResponse uploadProfilePicture(@PathVariable Long userId,
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal User authUser) {
         ensureSelf(authUser, userId);
-        return userService.uploadProfilePicture(userId, file);
+        return userService.uploadProfilePictureResponse(userId, file);
+    }
+
+    @GetMapping("/{userId}/profile-picture")
+    public ResponseEntity<byte[]> getProfilePicture(@PathVariable Long userId,
+            @AuthenticationPrincipal User authUser) {
+        ensureSelf(authUser, userId);
+        String key = userService.getProfilePictureKey(userId);
+        if (key == null) return ResponseEntity.noContent().build();
+        com.devappmobile.flowfuel.storage.StorageService.StorageObject obj = storageService.download(key);
+        return ResponseEntity.ok()
+                .header("Content-Type", obj.contentType())
+                .body(obj.data());
+    }
+
+    @DeleteMapping("/{userId}/profile-picture")
+    public ResponseEntity<Void> deleteProfilePicture(@PathVariable Long userId,
+            @AuthenticationPrincipal User authUser) {
+        ensureSelf(authUser, userId);
+        userService.removeProfilePicture(userId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{userId}/profile")

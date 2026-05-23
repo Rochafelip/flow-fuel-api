@@ -1,4 +1,57 @@
 # FlowFuel
+## Backblaze / S3-compatible storage (profile pictures)
+
+To enable profile picture uploads using Backblaze B2 (S3-compatible API), set these environment variables in your runtime (do not commit them):
+
+- `B2_S3_ENDPOINT` — Backblaze S3 endpoint (e.g. `https://s3.us-west-002.backblazeb2.com` or `https://f000.backblazeb2.com`)
+- `B2_S3_REGION` — region identifier (e.g. `us-west-002`)
+- `B2_S3_ACCESS_KEY` — S3 access key (Application Key ID or S3 key)
+- `B2_S3_SECRET` — S3 secret (Application Key)
+- `B2_BUCKET_NAME` — target bucket name
+
+The application uses the AWS S3 SDK to talk to Backblaze. The upload endpoint is already integrated in the user controller (`/auth/{userId}/upload-profile-picture`). The service will store the profile URL in the `profilePicture` field.
+
+Example (run locally):
+
+```bash
+export B2_S3_ENDPOINT="https://s3.us-west-002.backblazeb2.com"
+export B2_S3_REGION="us-west-002"
+export B2_S3_ACCESS_KEY="<your-access-key>"
+export B2_S3_SECRET="<your-secret>"
+export B2_BUCKET_NAME="my-bucket"
+./mvnw spring-boot:run
+```
+
+Bucket creation & quick CLI tests (Backblaze B2)
+
+1) Using `b2` CLI (native B2):
+
+```bash
+# authorize (you will be prompted)
+b2 authorize-account <ACCOUNT_ID> <APPLICATION_KEY>
+# create bucket (private)
+b2 create-bucket my-bucket allPrivate
+# upload file
+b2 upload-file my-bucket local.jpg remote.jpg
+```
+
+2) Using AWS CLI (S3-compatible endpoint):
+
+```bash
+# configure temporary profile (optional)
+aws configure set aws_access_key_id $B2_S3_ACCESS_KEY --profile b2
+aws configure set aws_secret_access_key $B2_S3_SECRET --profile b2
+# upload using S3-compatible endpoint
+aws --endpoint-url https://s3.us-east-005.backblazeb2.com s3 cp local.jpg s3://my-bucket/remote.jpg
+```
+
+3) Test upload to your app endpoint (replace values):
+
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" -F "file=@local.jpg" http://localhost:8080/auth/<USER_ID>/upload-profile-picture
+```
+
+
 
 Aplicação Spring Boot para gerenciamento de combustível: cadastro/login de usuários, veículos, abastecimentos e dashboard de consumo.
 

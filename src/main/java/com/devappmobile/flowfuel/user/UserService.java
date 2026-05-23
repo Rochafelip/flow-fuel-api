@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import com.devappmobile.flowfuel.storage.StorageService;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +25,7 @@ public class UserService {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
+    private final StorageService storageService;
 
     public UserResponseDTO register(UserRegisterDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
@@ -85,7 +87,35 @@ public class UserService {
     }
 
     public UserResponseDTO getUserProfile(Long userId) {
-        return UserResponseDTO.from(findUserOrThrow(userId));
+        User user = findUserOrThrow(userId);
+        String profileKey = user.getProfilePicture();
+        String internalUrl = profileKey != null ? ("/auth/" + userId + "/profile-picture") : null;
+        String signedUrl = null;
+        if (profileKey != null) {
+            try {
+                signedUrl = storageService.getUrl(profileKey);
+            } catch (Exception ignored) {
+            }
+        }
+
+        UserResponseDTO dto = UserResponseDTO.from(user);
+        dto.setProfilePicture(internalUrl);
+        dto.setProfilePictureUrl(signedUrl);
+        return dto;
+    }
+
+    public String getProfilePictureKey(Long userId) {
+        return findUserOrThrow(userId).getProfilePicture();
+    }
+
+    public void removeProfilePicture(Long userId) {
+        User user = findUserOrThrow(userId);
+        String key = user.getProfilePicture();
+        if (key != null) {
+            storageService.delete(key);
+            user.setProfilePicture(null);
+            userRepository.save(user);
+        }
     }
 
     public UserResponseDTO updateUserProfile(Long userId, UserRegisterDTO dto) {
@@ -104,7 +134,7 @@ public class UserService {
         return UserResponseDTO.from(userRepository.save(user));
     }
 
-    public String uploadProfilePicture(Long userId, MultipartFile file) {
+    public UploadResponse uploadProfilePictureResponse(Long userId, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessRuleException("Arquivo não informado");
         }
@@ -120,13 +150,44 @@ public class UserService {
 
         User user = findUserOrThrow(userId);
 
+        // cleanup previous image if present
+        String previousKey = user.getProfilePicture();
+        if (previousKey != null) {
+            try {
+                storageService.delete(previousKey);
+            } catch (Exception ignored) {
+            }
+        }
+
         String originalName = file.getOriginalFilename() != null
                 ? file.getOriginalFilename().replaceAll("[^a-zA-Z0-9._-]", "_")
                 : "photo";
-        user.setProfilePicture("profile_pictures/" + userId + "_" + originalName);
+
+        String key = "profile_pictures/" + userId + "_" + originalName;
+        storageService.upload(file, key);
+        user.setProfilePicture(key);
 
         userRepository.save(user);
+
+        String internalUrl = "/auth/" + userId + "/profile-picture";
+        String signedUrl = null;
+        try {
+            signedUrl = storageService.getUrl(key);
+        } catch (Exception ignored) {
+        }
+
+        return new UploadResponse(internalUrl, signedUrl);
+    }
+
+    // Backwards-compatible overload used by existing tests and callers
+    public String uploadProfilePicture(Long userId, MultipartFile file, boolean legacy) {
+        uploadProfilePictureResponse(userId, file);
         return "Foto atualizada com sucesso";
+    }
+
+    // Keep original signature for tests (convenience)
+    public String uploadProfilePicture(Long userId, MultipartFile file) {
+        return uploadProfilePicture(userId, file, true);
     }
 
     public void deleteUser(Long userId) {

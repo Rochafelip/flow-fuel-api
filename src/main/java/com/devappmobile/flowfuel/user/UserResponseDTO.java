@@ -18,6 +18,7 @@ public class UserResponseDTO {
     private String name;
     private String phone;
     private String profilePicture;
+    private String profilePictureUrl;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -28,6 +29,7 @@ public class UserResponseDTO {
                 user.getName(),
                 user.getPhone(),
                 user.getProfilePicture(),
+                null,
                 user.getCreatedAt(),
                 user.getUpdatedAt()
         );
