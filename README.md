@@ -96,7 +96,8 @@ A suíte cobre testes unitários e de integração dos módulos `user`, `vehicle
 Com a aplicação em execução, o Swagger UI fica disponível em:
 
 - `http://localhost:8080/swagger-ui.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- OpenAPI JSON: `
+/v3/api-docs`
 
 ## Estrutura do projeto
 

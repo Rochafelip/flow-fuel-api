@@ -35,7 +35,7 @@
 
 ### Objetivo principal
 
-Fornecer uma plataforma backend mobile-first (cliente Android nativo em Kotlin + Compose — [ADR-010](adr/ADR-010-android-kotlin-compose-mvvm.md)) que centraliza o histórico de abastecimentos por usuário, calculando automaticamente:
+Fornecer uma plataforma backend mobile-first (cliente Android nativo em Kotlin + Compose) — que centraliza o histórico de abastecimentos por usuário, calculando automaticamente:
 
 - Consumo médio (km/L ou km/kWh)
 - Total gasto em combustível/energia
@@ -46,7 +46,7 @@ Fornecer uma plataforma backend mobile-first (cliente Android nativo em Kotlin +
 
 Motoristas que querem monitorar custo e eficiência energética de seus veículos (combustão, elétricos ou híbridos).
 
-### Estratégia geral ([ADR-001](adr/ADR-001-monolito-modular.md), [ADR-013](adr/ADR-013-escalabilidade-scale-when-it-hurts.md))
+### Estratégia geral
 
 - **Monolito modular** (um artefato, módulos por feature)
 - **Scale when it hurts**: sem Redis/Kafka/K8s até existir gargalo medido
@@ -364,11 +364,28 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 
 ### EnergyType (Enum)
 
+Define a matriz energética do veículo. Os helpers `getEnergyUnit()` / `getPriceUnit()` / `getConsumptionUnit()` em `EnergyType` retornam o rótulo padrão; para HYBRID o dashboard usa `breakdown` (ver `RefuelType` abaixo).
+
 | Valor | Unidade energia | Unidade preço | Unidade consumo |
 |---|---|---|---|
 | COMBUSTION | litros | R$/litro | km/L |
 | ELECTRIC | kWh | R$/kWh | km/kWh |
-| HYBRID | litros | R$/litro | km/L |
+| HYBRID | — (ver `breakdown`) | — | — |
+
+### RefuelType (Enum)
+
+Classifica cada abastecimento individual:
+
+| Valor | Aceito em | Unidade de `energyAmount` |
+|---|---|---|
+| FUEL | COMBUSTION, HYBRID | litros |
+| ELECTRIC | ELECTRIC, HYBRID | kWh |
+
+Inferência no `RefuelRequestDTO`:
+
+- `COMBUSTION` → default `FUEL`
+- `ELECTRIC` → default `ELECTRIC`
+- `HYBRID` → **obrigatório** no request (sem default)
 
 ---
 
@@ -394,10 +411,12 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 - Odômetro ≥ maior odômetro já registrado para o veículo
 - `km_since_last_refuel` calculado automaticamente
 - `total_amount = energy_amount × price_per_unit` via `@PrePersist/@PreUpdate`
-- `energy_amount` ≤ capacidade do tanque/bateria
-- Faixa de preço válida:
-  - **Combustão / Híbrido:** R$ 0,50–15,00 / litro
-  - **Elétrico:** R$ 0,10–5,00 / kWh
+- `refuelType` resolvido por inferência (COMBUSTION→FUEL, ELECTRIC→ELECTRIC) ou obrigatório (HYBRID)
+- Combinações inválidas (ex.: `refuelType=ELECTRIC` em veículo COMBUSTION) ⇒ `400 BusinessRuleException`
+- `energy_amount` ≤ capacidade efetiva (`capacity` para `FUEL`; `batteryCapacity` para `ELECTRIC`). Se a capacidade correspondente não estiver cadastrada, a validação é ignorada.
+- Faixa de preço válida (definida pelo `refuelType` resolvido, não pelo veículo):
+  - **FUEL:** R$ 0,50–15,00 / litro
+  - **ELECTRIC:** R$ 0,10–5,00 / kWh
 - Apenas o dono do veículo cria/edita/exclui
 - Filtro por período: `startDate`, `endDate` (opcionais, `YYYY-MM-DD`)
 
@@ -405,7 +424,8 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 
 - Consumo médio só usa **tanques cheios** (`full_tank = true`)
 - Requer ≥ 2 abastecimentos cheios para calcular consumo
-- Métricas: total de abastecimentos, total gasto, total de energia, preço médio, consumo médio, última data e odômetro
+- Para `COMBUSTION` / `ELECTRIC`: campos planos (`totalEnergy`, `averagePrice`, `averageConsumption`) preenchidos com as unidades correspondentes (`energyUnit`, `priceUnit`, `consumptionUnit`)
+- Para `HYBRID`: campos planos de energia/preço/consumo são `null`; usar `breakdown.fuel` e `breakdown.electric`. `totalSpent` e `totalRefuels` continuam agregados no nível raiz
 
 ---
 
@@ -609,6 +629,7 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
   "fuelSubType": "Gasolina",
   "currentKm": 45000,
   "capacity": 55,
+  "batteryCapacity": null,
   "brand": "Volkswagen",
   "model": "Gol",
   "manufactureYear": 2020,
@@ -623,7 +644,8 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
 | type | Sim | `@NotBlank` |
 | energyType | Sim | `@NotNull` (COMBUSTION / ELECTRIC / HYBRID) |
 | currentKm | Sim | ≥ 0 |
-| capacity | Sim | ≥ 1 |
+| capacity | Sim | ≥ 1 (litros do tanque) |
+| batteryCapacity | Não | kWh — recomendado para ELECTRIC/HYBRID |
 | manufactureYear / modelYear | Não | 1886–2100 |
 
 ---
@@ -641,7 +663,8 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
   "odometer": 45500,
   "energyAmount": 40.5,
   "pricePerUnit": 5.89,
-  "fullTank": true
+  "fullTank": true,
+  "refuelType": "FUEL"
 }
 ```
 
@@ -649,9 +672,10 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
 |---|---|---|
 | vehicleId | Sim | `@NotNull` |
 | odometer | Sim | ≥ 0 e ≥ maior odômetro registrado |
-| energyAmount | Sim | ≥ 0,01 e ≤ `capacity` |
-| pricePerUnit | Sim | dentro do range por `energyType` |
+| energyAmount | Sim | ≥ 0,01 e ≤ capacidade efetiva (tanque ou bateria) |
+| pricePerUnit | Sim | dentro do range pelo `refuelType` resolvido |
 | fullTank | Não | default `false` |
+| refuelType | Depende | `FUEL` ou `ELECTRIC`. Obrigatório para HYBRID; inferido nos demais. Combinação inválida ⇒ 400 |
 
 **Response 200:** `RefuelResponseDTO` com `kmSinceLastRefuel` e `totalAmount` calculados; `vehicle.currentKm` é atualizado automaticamente.
 
@@ -676,15 +700,60 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
 
 Métricas consolidadas do veículo. **Verifica propriedade** (corrigido — o controller recebe `@AuthenticationPrincipal User` e o service valida ownership).
 
-**Response 200:**
+**Response 200 — `COMBUSTION` / `ELECTRIC`:**
 ```json
 {
   "vehicleId": 1,
+  "energyType": "COMBUSTION",
   "totalRefuels": 15,
   "totalSpent": 3572.45,
   "totalEnergy": 605.00,
   "averagePrice": 5.90,
   "averageConsumption": 12.35,
+  "energyUnit": "litros",
+  "priceUnit": "R$/litro",
+  "consumptionUnit": "km/L",
+  "breakdown": null,
+  "lastRefuelDate": "2026-05-15",
+  "lastOdometer": 52000
+}
+```
+
+Para `ELECTRIC`, as três `*Unit` mudam para `kWh` / `R$/kWh` / `km/kWh` e a semântica de `totalEnergy` passa a ser kWh.
+
+**Response 200 — `HYBRID`:**
+```json
+{
+  "vehicleId": 7,
+  "energyType": "HYBRID",
+  "totalRefuels": 30,
+  "totalSpent": 5090.60,
+  "totalEnergy": null,
+  "averagePrice": null,
+  "averageConsumption": null,
+  "energyUnit": null,
+  "priceUnit": null,
+  "consumptionUnit": null,
+  "breakdown": {
+    "fuel": {
+      "totalEnergy": 820.50,
+      "totalSpent": 4860.10,
+      "averagePrice": 5.92,
+      "averageConsumption": 14.1,
+      "energyUnit": "litros",
+      "priceUnit": "R$/litro",
+      "consumptionUnit": "km/L"
+    },
+    "electric": {
+      "totalEnergy": 189.75,
+      "totalSpent": 230.50,
+      "averagePrice": 1.21,
+      "averageConsumption": 6.4,
+      "energyUnit": "kWh",
+      "priceUnit": "R$/kWh",
+      "consumptionUnit": "km/kWh"
+    }
+  },
   "lastRefuelDate": "2026-05-15",
   "lastOdometer": 52000
 }
@@ -693,13 +762,18 @@ Métricas consolidadas do veículo. **Verifica propriedade** (corrigido — o co
 | Campo | Tipo | Descrição |
 |---|---|---|
 | vehicleId | Long | ID |
-| totalRefuels | Long | Total de abastecimentos |
-| totalSpent | BigDecimal | Σ `total_amount` |
-| totalEnergy | BigDecimal | Σ `energy_amount` |
-| averagePrice | BigDecimal | Média de `price_per_unit` |
-| averageConsumption | Double | km/L ou km/kWh (apenas tanques cheios; ≥ 2 cheios) |
+| energyType | EnergyType | Define o formato da resposta (plano vs. `breakdown`) |
+| totalRefuels | Long | Total de abastecimentos (todos os tipos) |
+| totalSpent | BigDecimal | Σ `total_amount` (sempre presente) |
+| totalEnergy | BigDecimal? | Σ `energy_amount`. `null` para HYBRID |
+| averagePrice | BigDecimal? | Média de `price_per_unit`. `null` para HYBRID |
+| averageConsumption | Double? | km por unidade de energia (≥ 2 tanques cheios). `null` para HYBRID |
+| energyUnit / priceUnit / consumptionUnit | String? | Rótulos da unidade. `null` para HYBRID |
+| breakdown | HybridBreakdownDTO? | Preenchido apenas para HYBRID |
 | lastRefuelDate | LocalDate | Último abastecimento |
 | lastOdometer | Integer | Odômetro do último abastecimento |
+
+`breakdown.fuel` e `breakdown.electric` seguem o mesmo schema (`FuelMetrics`): `totalEnergy`, `totalSpent`, `averagePrice`, `averageConsumption`, `energyUnit`, `priceUnit`, `consumptionUnit`.
 
 ---
 
@@ -873,7 +947,7 @@ Implementado conforme [ADR-008](adr/ADR-008-observabilidade-logs-sentry.md).
 
 Plano:
 - `.github/workflows/ci.yml` rodando `./mvnw verify` em todo PR
-- Branch `staging` → deploy automático para staging.flowfuel.app
+- Branch `staging` → deploy automático para desenv.api.flowfuel.app
 - Branch `main` → deploy para produção **com aprovação manual**
 - Secrets via GitHub Secrets / Railway
 

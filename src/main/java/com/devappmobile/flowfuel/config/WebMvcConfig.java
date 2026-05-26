@@ -15,6 +15,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // (HomeController, na raiz, fica fora — mantém o health check em "/").
         configurer.addPathPrefix("/api/v1", c ->
                 c.isAnnotationPresent(RestController.class)
+                        && c.getPackageName().startsWith("com.devappmobile.flowfuel")
                         && !c.getPackageName().equals("com.devappmobile.flowfuel"));
     }
 }
