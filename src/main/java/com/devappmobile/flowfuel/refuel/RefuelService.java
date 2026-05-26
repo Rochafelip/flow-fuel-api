@@ -13,9 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -41,15 +39,15 @@ public class RefuelService {
             throw new BusinessRuleException("Odômetro não pode ser menor que o último registrado");
         }
 
-        BigDecimal[] priceRange = priceRangeFor(vehicle);
+        RefuelType refuelType = resolveRefuelType(vehicle, request.getRefuelType());
+
+        BigDecimal[] priceRange = priceRangeFor(refuelType);
         if (request.getPricePerUnit().compareTo(priceRange[0]) < 0 ||
                 request.getPricePerUnit().compareTo(priceRange[1]) > 0) {
             throw new BusinessRuleException("Preço fora da faixa permitida");
         }
 
-        if (request.getEnergyAmount().compareTo(BigDecimal.valueOf(vehicle.getCapacity())) > 0) {
-            throw new BusinessRuleException("Quantidade de energia excede a capacidade do veículo");
-        }
+        validateCapacity(vehicle, refuelType, request.getEnergyAmount());
 
         Refuel refuel = new Refuel();
         refuel.setOdometer(request.getOdometer());
@@ -57,6 +55,7 @@ public class RefuelService {
         refuel.setPricePerUnit(request.getPricePerUnit());
         refuel.setFullTank(request.getFullTank() != null ? request.getFullTank() : false);
         refuel.setKmSinceLastRefuel(request.getOdometer() - lastOdometer);
+        refuel.setRefuelType(refuelType);
         refuel.setVehicle(vehicle);
 
         Refuel saved = refuelRepository.save(refuel);
@@ -120,14 +119,12 @@ public class RefuelService {
         }
 
         if (request.getEnergyAmount() != null) {
-            if (request.getEnergyAmount().compareTo(BigDecimal.valueOf(vehicle.getCapacity())) > 0) {
-                throw new BusinessRuleException("Quantidade de energia excede a capacidade do veículo");
-            }
+            validateCapacity(vehicle, refuel.getRefuelType(), request.getEnergyAmount());
             refuel.setEnergyAmount(request.getEnergyAmount());
         }
 
         if (request.getPricePerUnit() != null) {
-            BigDecimal[] priceRange = priceRangeFor(vehicle);
+            BigDecimal[] priceRange = priceRangeFor(refuel.getRefuelType());
             if (request.getPricePerUnit().compareTo(priceRange[0]) < 0 ||
                     request.getPricePerUnit().compareTo(priceRange[1]) > 0) {
                 throw new BusinessRuleException("Preço fora da faixa permitida");
@@ -149,52 +146,6 @@ public class RefuelService {
         refuelRepository.deleteById(id);
     }
 
-    public BigDecimal calculateAverageConsumption(Long vehicleId) {
-        List<Refuel> refuels = refuelRepository.findByVehicleIdAndFullTankTrueOrderByRefuelDateDesc(vehicleId);
-
-        if (refuels.size() < 2) return BigDecimal.ZERO;
-
-        double totalKm = 0;
-        double totalEnergy = 0;
-        int validRefuels = 0;
-
-        for (int i = 0; i < refuels.size() - 1; i++) {
-            Refuel current = refuels.get(i);
-            if (current.getKmSinceLastRefuel() != null && current.getKmSinceLastRefuel() > 0 &&
-                    current.getEnergyAmount() != null &&
-                    current.getEnergyAmount().compareTo(BigDecimal.ZERO) > 0) {
-                totalKm += current.getKmSinceLastRefuel();
-                totalEnergy += current.getEnergyAmount().doubleValue();
-                validRefuels++;
-            }
-        }
-
-        if (validRefuels == 0 || totalEnergy == 0) return BigDecimal.ZERO;
-
-        return BigDecimal.valueOf(totalKm / totalEnergy).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    public BigDecimal getTotalSpent(Long vehicleId) {
-        return refuelRepository.getTotalSpentByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
-    }
-
-    public BigDecimal getTotalEnergy(Long vehicleId) {
-        return refuelRepository.getTotalEnergyByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
-    }
-
-    public BigDecimal getAveragePricePerUnit(Long vehicleId) {
-        vehicleRepository.findById(vehicleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
-
-        BigDecimal totalEnergy = refuelRepository.getTotalEnergyByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
-        BigDecimal totalAmount = refuelRepository.getTotalSpentByVehicleId(vehicleId).orElse(BigDecimal.ZERO);
-
-        if (totalEnergy.compareTo(BigDecimal.ZERO) > 0) {
-            return totalAmount.divide(totalEnergy, 3, RoundingMode.HALF_UP);
-        }
-        return BigDecimal.ZERO;
-    }
-
     private boolean ownsVehicle(User user, Vehicle vehicle) {
         return vehicle.getUser().getId().equals(user.getId());
     }
@@ -203,10 +154,33 @@ public class RefuelService {
         return ownsVehicle(user, refuel.getVehicle());
     }
 
-    private BigDecimal[] priceRangeFor(Vehicle vehicle) {
-        if (vehicle.isElectric()) {
+    private BigDecimal[] priceRangeFor(RefuelType refuelType) {
+        if (refuelType == RefuelType.ELECTRIC) {
             return new BigDecimal[]{BigDecimal.valueOf(0.1), BigDecimal.valueOf(5.0)};
         }
         return new BigDecimal[]{BigDecimal.valueOf(0.5), BigDecimal.valueOf(15.0)};
+    }
+
+    private RefuelType resolveRefuelType(Vehicle vehicle, RefuelType requested) {
+        RefuelType resolved = requested != null ? requested : vehicle.defaultRefuelType();
+        if (resolved == null) {
+            throw new BusinessRuleException(
+                    "Veículo híbrido exige refuelType (FUEL ou ELECTRIC) no abastecimento");
+        }
+        if (!vehicle.acceptsRefuelType(resolved)) {
+            throw new BusinessRuleException(
+                    "Tipo de abastecimento " + resolved + " incompatível com o veículo");
+        }
+        return resolved;
+    }
+
+    private void validateCapacity(Vehicle vehicle, RefuelType refuelType, BigDecimal amount) {
+        BigDecimal capacity = vehicle.getEffectiveCapacity(refuelType);
+        if (capacity == null) {
+            return;
+        }
+        if (amount.compareTo(capacity) > 0) {
+            throw new BusinessRuleException("Quantidade de energia excede a capacidade do veículo");
+        }
     }
 }

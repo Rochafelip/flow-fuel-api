@@ -51,8 +51,28 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
     @Query("SELECT AVG(r.pricePerUnit) FROM Refuel r WHERE r.vehicle.id = :vehicleId")
     Optional<BigDecimal> getAveragePricePerUnitByVehicleId(@Param("vehicleId") Long vehicleId);
 
+    @Query("SELECT SUM(r.totalAmount) FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.refuelType = :refuelType")
+    Optional<BigDecimal> getTotalSpentByVehicleIdAndRefuelType(
+            @Param("vehicleId") Long vehicleId,
+            @Param("refuelType") RefuelType refuelType);
+
+    @Query("SELECT SUM(r.energyAmount) FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.refuelType = :refuelType")
+    Optional<BigDecimal> getTotalEnergyByVehicleIdAndRefuelType(
+            @Param("vehicleId") Long vehicleId,
+            @Param("refuelType") RefuelType refuelType);
+
+    @Query("SELECT AVG(r.pricePerUnit) FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.refuelType = :refuelType")
+    Optional<BigDecimal> getAveragePricePerUnitByVehicleIdAndRefuelType(
+            @Param("vehicleId") Long vehicleId,
+            @Param("refuelType") RefuelType refuelType);
+
     @Query("SELECT r FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.fullTank = true ORDER BY r.refuelDate DESC")
     List<Refuel> findFullTankRefuelsByVehicleId(@Param("vehicleId") Long vehicleId);
+
+    @Query("SELECT r FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.refuelType = :refuelType AND r.fullTank = true ORDER BY r.refuelDate DESC")
+    List<Refuel> findFullTankRefuelsByVehicleIdAndRefuelType(
+            @Param("vehicleId") Long vehicleId,
+            @Param("refuelType") RefuelType refuelType);
 
     @Query("SELECT COUNT(r) FROM Refuel r WHERE r.vehicle.id = :vehicleId")
     Long countByVehicleId(@Param("vehicleId") Long vehicleId);

@@ -123,6 +123,86 @@ class DashboardControllerIntegrationTest {
     }
 
     @Test
+    void getDashboard_veiculoHibrido_retornaBreakdownEFuelEletric() throws Exception {
+        String token = obterToken("hybrid@test.com");
+
+        MvcResult vehicleResult = mockMvc.perform(post("/api/v1/vehicles")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"type":"Carro","energyType":"HYBRID","currentKm":50000,
+                         "capacity":45,"batteryCapacity":40.0}
+                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+        long vehicleId = objectMapper.readTree(vehicleResult.getResponse().getContentAsString())
+                .get("id").asLong();
+
+        mockMvc.perform(post("/api/v1/refuels")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"vehicleId":%d,"odometer":50400,"energyAmount":30.0,
+                         "pricePerUnit":5.90,"fullTank":true,"refuelType":"FUEL"}
+                        """.formatted(vehicleId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/refuels")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"vehicleId":%d,"odometer":50500,"energyAmount":20.0,
+                         "pricePerUnit":1.20,"fullTank":true,"refuelType":"ELECTRIC"}
+                        """.formatted(vehicleId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/dashboard/vehicle/{id}", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.energyType").value("HYBRID"))
+                .andExpect(jsonPath("$.totalRefuels").value(2))
+                .andExpect(jsonPath("$.totalSpent").isNumber())
+                .andExpect(jsonPath("$.totalEnergy").doesNotExist())
+                .andExpect(jsonPath("$.averagePrice").doesNotExist())
+                .andExpect(jsonPath("$.energyUnit").doesNotExist())
+                .andExpect(jsonPath("$.breakdown.fuel.totalEnergy").value(30.0))
+                .andExpect(jsonPath("$.breakdown.fuel.energyUnit").value("litros"))
+                .andExpect(jsonPath("$.breakdown.fuel.priceUnit").value("R$/litro"))
+                .andExpect(jsonPath("$.breakdown.fuel.consumptionUnit").value("km/L"))
+                .andExpect(jsonPath("$.breakdown.electric.totalEnergy").value(20.0))
+                .andExpect(jsonPath("$.breakdown.electric.energyUnit").value("kWh"))
+                .andExpect(jsonPath("$.breakdown.electric.priceUnit").value("R$/kWh"))
+                .andExpect(jsonPath("$.breakdown.electric.consumptionUnit").value("km/kWh"))
+                .andExpect(jsonPath("$.lastOdometer").value(50500));
+    }
+
+    @Test
+    void postRefuel_veiculoHibridoSemRefuelType_retorna400() throws Exception {
+        String token = obterToken("hybrid-no-type@test.com");
+
+        MvcResult vehicleResult = mockMvc.perform(post("/api/v1/vehicles")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"type":"Carro","energyType":"HYBRID","currentKm":50000,
+                         "capacity":45,"batteryCapacity":40.0}
+                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+        long vehicleId = objectMapper.readTree(vehicleResult.getResponse().getContentAsString())
+                .get("id").asLong();
+
+        mockMvc.perform(post("/api/v1/refuels")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"vehicleId":%d,"odometer":50400,"energyAmount":30.0,
+                         "pricePerUnit":5.90,"fullTank":true}
+                        """.formatted(vehicleId)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void getDashboard_veiculoInexistente_retorna404() throws Exception {
         String token = obterToken("404dash@test.com");
 
