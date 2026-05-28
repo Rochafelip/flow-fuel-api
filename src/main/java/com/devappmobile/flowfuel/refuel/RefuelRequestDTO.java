@@ -2,6 +2,7 @@ package com.devappmobile.flowfuel.refuel;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -16,9 +17,13 @@ public class RefuelRequestDTO {
     @NotNull
     private Long vehicleId;
 
+    @Schema(description = "Quilômetros percorridos desde o último abastecimento. " +
+            "O odômetro absoluto é calculado como (currentKm do veículo + trip).",
+            example = "450", minimum = "1", maximum = "5000")
     @NotNull
-    @Min(0)
-    private Integer odometer;
+    @Min(1)
+    @Max(5000)
+    private Integer trip;
 
     @NotNull
     @DecimalMin("0.01")

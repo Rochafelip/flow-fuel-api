@@ -56,10 +56,10 @@ class RefuelServiceTest {
         vehicle.setCapacity(55);
     }
 
-    private RefuelRequestDTO buildRequest(int odometer, double energyAmount, double price) {
+    private RefuelRequestDTO buildRequest(int trip, double energyAmount, double price) {
         RefuelRequestDTO dto = new RefuelRequestDTO();
         dto.setVehicleId(10L);
-        dto.setOdometer(odometer);
+        dto.setTrip(trip);
         dto.setEnergyAmount(BigDecimal.valueOf(energyAmount));
         dto.setPricePerUnit(BigDecimal.valueOf(price));
         dto.setFullTank(true);
@@ -70,7 +70,7 @@ class RefuelServiceTest {
 
     @Test
     void createRefuel_dadosValidos_retornaRefuelComKmCalculado() {
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
+        RefuelRequestDTO dto = buildRequest(500, 40.0, 5.89);
 
         Refuel saved = new Refuel();
         saved.setId(1L);
@@ -93,14 +93,12 @@ class RefuelServiceTest {
     }
 
     @Test
-    void createRefuel_odometroMenorQueUltimo_lancaBusinessRule() {
-        Refuel lastRefuel = new Refuel();
-        lastRefuel.setOdometer(2000);
-
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
+    void createRefuel_veiculoSemCurrentKm_lancaBusinessRule() {
+        vehicle.setCurrentKm(null);
+        RefuelRequestDTO dto = buildRequest(500, 40.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
-        when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.of(lastRefuel));
+        when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
                 .isInstanceOf(BusinessRuleException.class);
@@ -109,7 +107,7 @@ class RefuelServiceTest {
 
     @Test
     void createRefuel_precoMuitoBaixo_lancaBusinessRule() {
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 0.10);
+        RefuelRequestDTO dto = buildRequest(500, 40.0, 0.10);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
@@ -121,7 +119,7 @@ class RefuelServiceTest {
 
     @Test
     void createRefuel_precoMuitoAlto_lancaBusinessRule() {
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 20.0);
+        RefuelRequestDTO dto = buildRequest(500, 40.0, 20.0);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
@@ -133,7 +131,7 @@ class RefuelServiceTest {
 
     @Test
     void createRefuel_energiaMaiorQueCapacidade_lancaBusinessRule() {
-        RefuelRequestDTO dto = buildRequest(1500, 60.0, 5.89);
+        RefuelRequestDTO dto = buildRequest(500, 60.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
         when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
@@ -145,7 +143,7 @@ class RefuelServiceTest {
 
     @Test
     void createRefuel_usuarioNaoEDono_lancaForbidden() {
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
+        RefuelRequestDTO dto = buildRequest(500, 40.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
@@ -156,7 +154,7 @@ class RefuelServiceTest {
 
     @Test
     void createRefuel_veiculoInexistente_lancaResourceNotFound() {
-        RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
+        RefuelRequestDTO dto = buildRequest(500, 40.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.empty());
 
@@ -169,7 +167,7 @@ class RefuelServiceTest {
         vehicle.setEnergyType(EnergyType.HYBRID);
         vehicle.setBatteryCapacity(BigDecimal.valueOf(40));
 
-        RefuelRequestDTO dto = buildRequest(1500, 30.0, 5.50);
+        RefuelRequestDTO dto = buildRequest(500, 30.0, 5.50);
         dto.setRefuelType(null);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
@@ -186,7 +184,7 @@ class RefuelServiceTest {
         vehicle.setEnergyType(EnergyType.HYBRID);
         vehicle.setBatteryCapacity(BigDecimal.valueOf(40));
 
-        RefuelRequestDTO dto = buildRequest(1500, 50.0, 1.20);
+        RefuelRequestDTO dto = buildRequest(500, 50.0, 1.20);
         dto.setRefuelType(RefuelType.ELECTRIC);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
@@ -200,7 +198,7 @@ class RefuelServiceTest {
 
     @Test
     void createRefuel_veiculoCombustao_comRefuelTypeEletrico_lancaBusinessRule() {
-        RefuelRequestDTO dto = buildRequest(1500, 30.0, 1.20);
+        RefuelRequestDTO dto = buildRequest(500, 30.0, 1.20);
         dto.setRefuelType(RefuelType.ELECTRIC);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
@@ -218,7 +216,7 @@ class RefuelServiceTest {
         vehicle.setCapacity(null);
         vehicle.setBatteryCapacity(null);
 
-        RefuelRequestDTO dto = buildRequest(1500, 999.0, 1.20);
+        RefuelRequestDTO dto = buildRequest(500, 999.0, 1.20);
 
         Refuel saved = new Refuel();
         saved.setId(7L);
@@ -237,7 +235,7 @@ class RefuelServiceTest {
     @Test
     void createRefuel_veiculoEletrico_aceitaPrecoNaFaixaEletrica() {
         vehicle.setEnergyType(EnergyType.ELECTRIC);
-        RefuelRequestDTO dto = buildRequest(1500, 30.0, 1.50);
+        RefuelRequestDTO dto = buildRequest(500, 30.0, 1.50);
 
         Refuel saved = new Refuel();
         saved.setId(5L);
