@@ -163,6 +163,16 @@ com.devappmobile.flowfuel/
 │   ├── RefuelRequestDTO.java
 │   └── RefuelResponseDTO.java
 │
+├── vehicleevent/                    ← Módulo de prontuário do veículo (eventos financeiros/operacionais)
+│   ├── VehicleEvent.java
+│   ├── VehicleEventType.java         ← Enum: FUEL, MAINTENANCE, OIL_CHANGE, CAR_WASH, TIRES, INSURANCE, TAX, DOCUMENTS, OTHER
+│   ├── VehicleEventRepository.java
+│   ├── VehicleEventService.java
+│   ├── VehicleEventController.java   ← /api/v1/vehicle-events/*
+│   └── dto/
+│       ├── VehicleEventRequestDTO.java
+│       └── VehicleEventResponseDTO.java
+│
 └── dashboard/                        ← Módulo de analytics
     ├── DashboardController.java      ← /api/v1/dashboard/*
     ├── DashboardService.java
@@ -777,6 +787,83 @@ Para `ELECTRIC`, as três `*Unit` mudam para `kWh` / `R$/kWh` / `km/kWh` e a sem
 
 ---
 
+### Módulo VehicleEvents — `/api/v1/vehicle-events`
+
+#### VehicleEvent (Prontuário do Veículo)
+
+`VehicleEvent` representa **eventos financeiros e operacionais** associados a um veículo (manutenções, troca de óleo, lavagem, pneus, seguro, IPVA/licenciamento, documentos, abastecimentos avulsos registrados como despesa, etc.). Funciona como um **prontuário/diário** do veículo.
+
+#### O que VehicleEvent NÃO é
+
+- **NÃO substitui `Refuel`** — abastecimentos operacionais continuam em `/api/v1/refuels`.
+- **NÃO calcula consumo** nem produz métricas derivadas (km/L, km/kWh).
+- **NÃO atualiza `vehicle.currentKm`** — o odômetro do veículo é movido apenas por `Refuel` (ou `PUT /vehicles/{id}/odometer`).
+- `amount` é **input direto** do cliente (valor pago em R$), sem cálculo automático.
+- `odometer` é **opcional e meramente informativo** — registrado para histórico, não usado em métricas.
+
+#### Separação de domínio: Refuel × VehicleEvent
+
+| Aspecto | `Refuel` | `VehicleEvent` |
+|---|---|---|
+| Propósito | Abastecimento operacional | Histórico financeiro / prontuário |
+| Atualiza `vehicle.currentKm` | Sim (derivado de `trip`) | Não |
+| Cálculo de consumo | Sim (km/L, km/kWh) | Não |
+| Entra no Dashboard de métricas | Sim | Não (apenas listagem) |
+| Tipos | `FUEL`, `ELECTRIC` | `FUEL`, `MAINTENANCE`, `OIL_CHANGE`, `CAR_WASH`, `TIRES`, `INSURANCE`, `TAX`, `DOCUMENTS`, `OTHER` |
+| Valor | Derivado (`energy × price`) | Input direto (`amount`) |
+| Eventos avulsos | Não | Sim |
+
+#### Endpoints
+
+> Todos os endpoints validam que o veículo pertence ao usuário autenticado (cadeia `vehicleEvent → vehicle → user`).
+
+| Método | Rota | Descrição | Tipo de resposta |
+|---|---|---|---|
+| POST | `/api/v1/vehicle-events` | Cria um evento | `VehicleEventResponseDTO` |
+| GET | `/api/v1/vehicle-events/{id}` | Detalhe | `VehicleEventResponseDTO` |
+| GET | `/api/v1/vehicle-events/vehicle/{vehicleId}?type=&startDate=&endDate=&page=&size=` | Lista paginada por veículo, com filtros opcionais | `PageResponseDTO<VehicleEventResponseDTO>` |
+| PUT | `/api/v1/vehicle-events/{id}` | Atualiza | `VehicleEventResponseDTO` |
+| DELETE | `/api/v1/vehicle-events/{id}` | Remove | `200` |
+
+**Filtros do GET por veículo:**
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `type` | `VehicleEventType` | Filtra por categoria (ex.: `MAINTENANCE`) |
+| `startDate` | `YYYY-MM-DD` | Data inicial inclusiva (`eventDate ≥ startDate`) |
+| `endDate` | `YYYY-MM-DD` | Data final inclusiva (`eventDate ≤ endDate`) |
+
+**`POST /api/v1/vehicle-events` — request body:**
+
+```json
+{
+  "vehicleId": 1,
+  "type": "MAINTENANCE",
+  "amount": 380.00,
+  "eventDate": "2026-05-20",
+  "odometer": 52340,
+  "description": "Troca de pastilhas de freio dianteiras"
+}
+```
+
+| Campo | Obrigatório | Validação |
+|---|---|---|
+| `vehicleId` | Sim | `@NotNull` — veículo do usuário |
+| `type` | Sim | `@NotNull` — enum `VehicleEventType` |
+| `amount` | Sim | ≥ 0.01, até 2 casas decimais |
+| `eventDate` | Sim | `@PastOrPresent` |
+| `odometer` | Não | ≥ 0 — apenas informativo, não altera `vehicle.currentKm` |
+| `description` | Não | até 2000 caracteres |
+
+#### Decisões arquiteturais
+
+- **Módulos separados (não fundir com `Refuel`).** `Refuel` carrega invariantes de odômetro, capacidade efetiva e faixa de preço — regras irrelevantes para um IPVA ou uma troca de óleo. Fundir os domínios obrigaria a tornar essas regras opcionais, enfraquecendo a integridade de `Refuel`.
+- **Sem cálculos derivados em `VehicleEvent`.** Mantém o módulo simples e o `amount` como fonte de verdade. Métricas continuam sendo responsabilidade exclusiva de `Refuel` + `Dashboard`.
+- **`odometer` informativo, não autoritativo.** Evita corrida entre dois módulos atualizando o mesmo campo do veículo. `Refuel` permanece a única fonte que move `vehicle.currentKm`.
+- **Timeline unificada (futuro).** Caso o app precise exibir um histórico cronológico único (abastecimentos + manutenções + impostos), a unificação será feita **apenas na camada de agregação/API** (ex.: novo endpoint `GET /api/v1/vehicles/{id}/timeline`), sem fundir entidades nem alterar contratos existentes.
+
+---
+
 ### Formato padrão de erros — RFC 7807 (`ProblemDetail`)
 
 Todas as respostas de erro usam o catálogo `ErrorCode` + serializador `ProblemDetailWriter`:
@@ -873,6 +960,7 @@ POST /api/v1/auth/refresh { refreshToken }
 | `V1__baseline.sql` | Tabelas `users`, `vehicles`, `refuels` |
 | `V2__energy_type_to_string.sql` | Converte `energy_type` de ordinal para `STRING` |
 | `V3__refresh_tokens.sql` | Tabela `refresh_tokens` (ADR-003) |
+| `V5__vehicle_events.sql` | Tabela `vehicle_events` (prontuário — eventos financeiros/operacionais) |
 
 > A coluna `users.profile_picture` (já existente desde V1) passou a armazenar a **chave** do objeto no bucket S3-compatível ([ADR-005](adr/ADR-005-storage-cloud.md)) — não foi necessária nova migration.
 
