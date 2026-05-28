@@ -208,11 +208,11 @@ com.devappmobile.flowfuel/
 
 | Padrão | Onde é aplicado |
 |---|---|
-| **Modular Monolith** | Pacotes por feature (`user`, `vehicle`, `refuel`, `dashboard`) — [ADR-001](adr/ADR-001-monolito-modular.md) |
+| **Modular Monolith** | Pacotes por feature (`user`, `vehicle`, `refuel`, `vehicleevent`, `dashboard`) — [ADR-001](adr/ADR-001-monolito-modular.md) |
 | **MVC** | Controller → Service → Repository, DTOs como contrato |
 | **Repository Pattern** | Todos os `*Repository` estendem `JpaRepository` |
 | **Service Layer** | Regras de negócio isoladas em `*Service` |
-| **DTO Pattern** | `UserRegisterDTO`, `UserResponseDTO`, `VehicleRequestDTO`, `RefuelRequestDTO`, `DashboardDTO`, `TokenPairResponse` |
+| **DTO Pattern** | `UserRegisterDTO`, `UserResponseDTO`, `VehicleRequestDTO`, `RefuelRequestDTO`, `VehicleEventRequestDTO`, `DashboardDTO`, `TokenPairResponse` |
 | **Filter Chain** | `RequestIdFilter` → `JwtAuthenticationFilter` antes dos controllers |
 | **Builder (Lombok)** | `DashboardDTO` |
 | **Stateless Auth + Stateful Refresh** | Access token JWT (stateless) + refresh token persistido em `refresh_tokens` — [ADR-003](adr/ADR-003-autenticacao-jwt.md) |
