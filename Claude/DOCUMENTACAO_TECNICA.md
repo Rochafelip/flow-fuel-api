@@ -351,8 +351,8 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 | Campo | Tipo | Regra |
 |---|---|---|
 | id | Long | PK |
-| odometer | Integer | NOT NULL, ≥ maior odômetro registrado |
-| km_since_last_refuel | Integer | calculado |
+| odometer | Integer | NOT NULL, derivado no servidor (`vehicle.currentKm + trip`) — não enviado pelo cliente |
+| km_since_last_refuel | Integer | igual ao `trip` informado na request |
 | energy_amount | BigDecimal | ≥ 0.01, ≤ capacidade |
 | price_per_unit | BigDecimal | dentro do range por tipo |
 | total_amount | BigDecimal | `@PrePersist / @PreUpdate` (`energy × price`) |
@@ -418,8 +418,8 @@ Inferência no `RefuelRequestDTO`:
 
 ### Abastecimentos
 
-- Odômetro ≥ maior odômetro já registrado para o veículo
-- `km_since_last_refuel` calculado automaticamente
+- Entrada via `trip` (1–5000 km percorridos desde o último abastecimento); odômetro absoluto é **derivado** (`vehicle.currentKm + trip`) e nunca enviado pelo cliente
+- `km_since_last_refuel = trip` (persistido); `vehicle.currentKm` é atualizado para o novo odômetro absoluto
 - `total_amount = energy_amount × price_per_unit` via `@PrePersist/@PreUpdate`
 - `refuelType` resolvido por inferência (COMBUSTION→FUEL, ELECTRIC→ELECTRIC) ou obrigatório (HYBRID)
 - Combinações inválidas (ex.: `refuelType=ELECTRIC` em veículo COMBUSTION) ⇒ `400 BusinessRuleException`
@@ -670,7 +670,7 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
 ```json
 {
   "vehicleId": 1,
-  "odometer": 45500,
+  "trip": 450,
   "energyAmount": 40.5,
   "pricePerUnit": 5.89,
   "fullTank": true,
@@ -681,15 +681,17 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
 | Campo | Obrigatório | Validação |
 |---|---|---|
 | vehicleId | Sim | `@NotNull` |
-| odometer | Sim | ≥ 0 e ≥ maior odômetro registrado |
+| trip | Sim | `[1..5000]` — km percorridos desde o último abastecimento |
 | energyAmount | Sim | ≥ 0,01 e ≤ capacidade efetiva (tanque ou bateria) |
 | pricePerUnit | Sim | dentro do range pelo `refuelType` resolvido |
 | fullTank | Não | default `false` |
 | refuelType | Depende | `FUEL` ou `ELECTRIC`. Obrigatório para HYBRID; inferido nos demais. Combinação inválida ⇒ 400 |
 
-**Response 200:** `RefuelResponseDTO` com `kmSinceLastRefuel` e `totalAmount` calculados; `vehicle.currentKm` é atualizado automaticamente.
+**Cálculo automático do odômetro:** o servidor deriva `odometer = vehicle.currentKm + trip` (ou `lastRefuel.odometer + trip` quando já houver histórico) e persiste o valor absoluto, mantendo `kmSinceLastRefuel = trip`. O `vehicle.currentKm` é atualizado automaticamente após o save.
 
-**Erros típicos:** `400` (validação / odômetro / range), `403` (não dono), `404` (veículo não existe).
+**Response 200:** `RefuelResponseDTO` com `odometer` (absoluto, derivado), `kmSinceLastRefuel` e `totalAmount` calculados.
+
+**Erros típicos:** `400` (validação `trip`, `energyAmount`/`price` fora do range, veículo sem `currentKm` inicial), `403` (não dono), `404` (veículo não existe).
 
 #### Demais rotas
 
@@ -902,9 +904,9 @@ Header de correlação: `X-Request-Id: 5a2b...` (gerado pelo `RequestIdFilter` s
     ← 200 Vehicle
 
 [4] REGISTRAR ABASTECIMENTO
-    POST /api/v1/refuels           { vehicleId, odometer, energyAmount, pricePerUnit, fullTank }
-    ← 200 Refuel (kmSinceLastRefuel, totalAmount calculados)
-    [automático] vehicle.currentKm ← odometer
+    POST /api/v1/refuels           { vehicleId, trip, energyAmount, pricePerUnit, fullTank }
+    ← 200 Refuel (odometer, kmSinceLastRefuel, totalAmount calculados)
+    [automático] vehicle.currentKm ← vehicle.currentKm + trip
 
 [5] VER DASHBOARD
     GET  /api/v1/dashboard/vehicle/{id}
