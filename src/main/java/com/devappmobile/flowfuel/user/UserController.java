@@ -15,11 +15,16 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserController {
 
     private final UserService userService;
+    private final PasswordResetService passwordResetService;
     private final com.devappmobile.flowfuel.storage.StorageService storageService;
 
     @PostMapping("/register")
-    public UserResponseDTO register(@Valid @RequestBody UserRegisterDTO dto) {
-        return userService.register(dto);
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody UserRegisterDTO dto) {
+        AuthResponse response = userService.register(dto);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + response.accessToken());
+        return ResponseEntity.ok().headers(headers).body(response);
     }
 
     @PostMapping("/login")
@@ -39,6 +44,17 @@ public class UserController {
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequest request) {
         userService.logout(request.refreshToken());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/forgot-password")
+    public ForgotPasswordResponse forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        return passwordResetService.requestReset(request.email());
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordResetService.reset(request.token(), request.newPassword());
         return ResponseEntity.noContent().build();
     }
 

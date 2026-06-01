@@ -21,6 +21,7 @@ public enum ErrorCode {
     AUTH_REFRESH_INVALID(HttpStatus.UNAUTHORIZED, "Refresh token inválido"),
     AUTH_REFRESH_EXPIRED(HttpStatus.UNAUTHORIZED, "Refresh token expirado"),
     AUTH_REFRESH_REVOKED(HttpStatus.UNAUTHORIZED, "Refresh token revogado"),
+    AUTH_RESET_INVALID(HttpStatus.UNAUTHORIZED, "Token de redefinição de senha inválido"),
 
     // 403 — autorizacao
     FORBIDDEN_OPERATION(HttpStatus.FORBIDDEN, "Operação não permitida"),
@@ -31,6 +32,9 @@ public enum ErrorCode {
     // 409 — conflito
     CONFLICT(HttpStatus.CONFLICT, "Conflito"),
     EMAIL_ALREADY_REGISTERED(HttpStatus.CONFLICT, "Email já cadastrado"),
+
+    // 429 — excesso de requisicoes
+    RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "Limite de requisições excedido"),
 
     // 500 — generico
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno");

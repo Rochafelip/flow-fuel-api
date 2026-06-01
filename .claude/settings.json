@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mvn test *)"
+      "Bash(mvn test *)",
+      "Bash(sed -n '1,60p' src/test/java/com/devappmobile/flowfuel/user/*ControllerIntegrationTest*.java)",
+      "Bash(./mvnw -q test -Dtest='PasswordResetServiceTest,UserControllerIntegrationTest')",
+      "Bash(./mvnw -q test -Dtest='UserControllerIntegrationTest')",
+      "Bash(./mvnw -q test)",
+      "Bash(awk '{f+=$5; e+=$7; s+=$9; r+=$3} END {print \"Total runs\\(somados por classe na linha\\): ver abaixo\"}')",
+      "Bash(./mvnw -q test -Dtest='PasswordResetServiceTest,UserControllerIntegrationTest,RefreshTokenServiceTest')",
+      "Bash(awk -F'[ ,]+' '/Tests run:.*in /{r+=$3;f+=$5;e+=$7} END{print \"TOTAL: runs=\"r\" fail=\"f\" err=\"e}' target/surefire-reports/*.txt)",
+      "Bash(grep -n \"POST /api/v1/auth/register\\\\|UserResponseDTO\\\\` \\(sem\\\\|Response 200:\\\\*\\\\* \\\\`UserResponseDTO\" Claude/DOCUMENTACAO_TECNICA.md)",
+      "Bash(echo \"exit=$? \\(0 = compilou\\)\")"
     ]
   }
 }

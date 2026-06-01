@@ -57,12 +57,19 @@ class UserServiceTest {
             u.setId(2L);
             return u;
         });
+        when(jwtUtil.generateToken("novo@example.com", 2L)).thenReturn("jwt-novo");
+        when(jwtUtil.getAccessTokenTtlMs()).thenReturn(900_000L);
+        when(refreshTokenService.issue(any(User.class))).thenReturn("refresh-novo");
 
-        UserResponseDTO response = userService.register(dto);
+        AuthResponse response = userService.register(dto);
 
         assertThat(response).isNotNull();
-        assertThat(response.getEmail()).isEqualTo("novo@example.com");
-        assertThat(response.getId()).isEqualTo(2L);
+        assertThat(response.user().getEmail()).isEqualTo("novo@example.com");
+        assertThat(response.user().getId()).isEqualTo(2L);
+        // register ja deixa o usuario logado (ADR-003)
+        assertThat(response.accessToken()).isEqualTo("jwt-novo");
+        assertThat(response.refreshToken()).isEqualTo("refresh-novo");
+        assertThat(response.expiresIn()).isEqualTo(900L);
     }
 
     @Test

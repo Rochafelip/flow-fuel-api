@@ -27,7 +27,12 @@ public class UserService {
     private final RefreshTokenService refreshTokenService;
     private final StorageService storageService;
 
-    public UserResponseDTO register(UserRegisterDTO dto) {
+    /**
+     * Cadastra um novo usuario e ja emite o par de tokens (login automatico):
+     * o cliente recebe os dados da conta criada junto com access + refresh token,
+     * dispensando uma segunda chamada a {@link #login(String, String)}.
+     */
+    public AuthResponse register(UserRegisterDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
             throw new ConflictException(ErrorCode.EMAIL_ALREADY_REGISTERED, "Email já cadastrado");
         }
@@ -38,7 +43,8 @@ public class UserService {
         user.setName(dto.getName());
         user.setPhone(dto.getPhone());
 
-        return UserResponseDTO.from(userRepository.save(user));
+        User saved = userRepository.save(user);
+        return AuthResponse.of(UserResponseDTO.from(saved), issueTokenPair(saved));
     }
 
     public TokenPairResponse login(String email, String password) {

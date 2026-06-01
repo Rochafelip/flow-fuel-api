@@ -60,19 +60,19 @@ class RefuelControllerIntegrationTest {
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }
 
-    private long criarAbastecimento(String token, long vehicleId, int trip) throws Exception {
+    private long criarAbastecimento(String token, long vehicleId, int odometer) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/refuels")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
                           "vehicleId": %d,
-                          "trip": %d,
+                          "odometer": %d,
                           "energyAmount": 40.0,
                           "pricePerUnit": 5.89,
                           "fullTank": true
                         }
-                        """.formatted(vehicleId, trip)))
+                        """.formatted(vehicleId, odometer)))
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
@@ -89,7 +89,7 @@ class RefuelControllerIntegrationTest {
                 .content("""
                         {
                           "vehicleId": %d,
-                          "trip": 500,
+                          "odometer": 50500,
                           "energyAmount": 40.0,
                           "pricePerUnit": 5.89,
                           "fullTank": true
@@ -100,13 +100,12 @@ class RefuelControllerIntegrationTest {
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         assert body.get("kmSinceLastRefuel").asInt() == 500;
-        assert body.get("odometer").asInt() == 50500;
         assert body.get("fullTank").asBoolean();
     }
 
     @Test
-    void createRefuel_tripInvalido_retorna400() throws Exception {
-        String token = obterToken("tripinvalido@test.com");
+    void createRefuel_odometroMenorQueAtual_retorna400() throws Exception {
+        String token = obterToken("odometrobaixo@test.com");
         long vehicleId = criarVeiculo(token);
 
         mockMvc.perform(post("/api/v1/refuels")
@@ -115,7 +114,7 @@ class RefuelControllerIntegrationTest {
                 .content("""
                         {
                           "vehicleId": %d,
-                          "trip": 0,
+                          "odometer": 100,
                           "energyAmount": 40.0,
                           "pricePerUnit": 5.89
                         }
@@ -135,7 +134,7 @@ class RefuelControllerIntegrationTest {
                 .content("""
                         {
                           "vehicleId": %d,
-                          "trip": 1000,
+                          "odometer": 51000,
                           "energyAmount": 40.0,
                           "pricePerUnit": 5.89
                         }
@@ -147,8 +146,8 @@ class RefuelControllerIntegrationTest {
     void getVehicleRefuels_retornaHistoricoOrdenadoPorData() throws Exception {
         String token = obterToken("historico@test.com");
         long vehicleId = criarVeiculo(token);
-        criarAbastecimento(token, vehicleId, 500);
-        criarAbastecimento(token, vehicleId, 500);
+        criarAbastecimento(token, vehicleId, 50500);
+        criarAbastecimento(token, vehicleId, 51000);
 
         mockMvc.perform(get("/api/v1/refuels/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
@@ -161,7 +160,7 @@ class RefuelControllerIntegrationTest {
     void getRefuelById_donoCorreto_retorna200() throws Exception {
         String token = obterToken("byid@test.com");
         long vehicleId = criarVeiculo(token);
-        long refuelId = criarAbastecimento(token, vehicleId, 500);
+        long refuelId = criarAbastecimento(token, vehicleId, 50500);
 
         mockMvc.perform(get("/api/v1/refuels/{id}", refuelId)
                 .header("Authorization", "Bearer " + token))
@@ -174,7 +173,7 @@ class RefuelControllerIntegrationTest {
         String tokenA = obterToken("getA@test.com");
         String tokenB = obterToken("getB@test.com");
         long vehicleId = criarVeiculo(tokenA);
-        long refuelId = criarAbastecimento(tokenA, vehicleId, 500);
+        long refuelId = criarAbastecimento(tokenA, vehicleId, 50500);
 
         mockMvc.perform(get("/api/v1/refuels/{id}", refuelId)
                 .header("Authorization", "Bearer " + tokenB))
@@ -185,7 +184,7 @@ class RefuelControllerIntegrationTest {
     void deleteRefuel_donoCorreto_retorna200() throws Exception {
         String token = obterToken("delrefuel@test.com");
         long vehicleId = criarVeiculo(token);
-        long refuelId = criarAbastecimento(token, vehicleId, 500);
+        long refuelId = criarAbastecimento(token, vehicleId, 50500);
 
         mockMvc.perform(delete("/api/v1/refuels/{id}", refuelId)
                 .header("Authorization", "Bearer " + token))
@@ -196,7 +195,7 @@ class RefuelControllerIntegrationTest {
     void getVehicleRefuels_comFiltroDePeriodo_retornaApenasOsDoIntervalo() throws Exception {
         String token = obterToken("filtro@test.com");
         long vehicleId = criarVeiculo(token);
-        criarAbastecimento(token, vehicleId, 500);
+        criarAbastecimento(token, vehicleId, 50500);
 
         mockMvc.perform(get("/api/v1/refuels/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token)
