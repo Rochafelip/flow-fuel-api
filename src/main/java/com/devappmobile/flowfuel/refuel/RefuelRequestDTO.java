@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.refuel;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -28,4 +29,8 @@ public class RefuelRequestDTO {
     private BigDecimal pricePerUnit;
 
     private Boolean fullTank = false;
+
+    @Schema(description = "Tipo do abastecimento. Obrigatório para veículos HYBRID; inferido para COMBUSTION (FUEL) e ELECTRIC (ELECTRIC).",
+            nullable = true, example = "FUEL")
+    private RefuelType refuelType;
 }

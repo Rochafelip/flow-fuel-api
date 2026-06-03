@@ -25,6 +25,7 @@ public class RefuelResponseDTO {
     private BigDecimal pricePerUnit;
     private BigDecimal totalAmount;
     private Boolean fullTank;
+    private RefuelType refuelType;
 
     public static RefuelResponseDTO from(Refuel r) {
         return RefuelResponseDTO.builder()
@@ -37,6 +38,7 @@ public class RefuelResponseDTO {
                 .pricePerUnit(r.getPricePerUnit())
                 .totalAmount(r.getTotalAmount())
                 .fullTank(r.getFullTank())
+                .refuelType(r.getRefuelType())
                 .build();
     }
 }

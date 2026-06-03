@@ -1,9 +1,12 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.common.error.AppException;
+import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.config.JwtUtil;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ConflictException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
+import com.devappmobile.flowfuel.storage.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +30,9 @@ class UserServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private JwtUtil jwtUtil;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private RefreshTokenService refreshTokenService;
+    @Mock private StorageService storageService;
+    @Mock private AccountActivationService accountActivationService;
 
     @InjectMocks private UserService userService;
 
@@ -41,7 +47,7 @@ class UserServiceTest {
     // --- register ---
 
     @Test
-    void register_comEmailNovo_retornaDto() {
+    void register_comEmailNovo_criaContaPendenteEDisparaAtivacao() {
         UserRegisterDTO dto = new UserRegisterDTO();
         dto.setEmail("novo@example.com");
         dto.setPassword("senha123");
@@ -57,9 +63,14 @@ class UserServiceTest {
 
         UserResponseDTO response = userService.register(dto);
 
+        // register NAO loga mais: retorna so o usuario, sem tokens
         assertThat(response).isNotNull();
         assertThat(response.getEmail()).isEqualTo("novo@example.com");
         assertThat(response.getId()).isEqualTo(2L);
+        // conta nasce pendente e o link de ativacao e disparado
+        verify(userRepository).save(argThat(u -> u.getStatus() == UserStatus.PENDING_ACTIVATION));
+        verify(accountActivationService).sendActivation(argThat(u -> u.getId().equals(2L)));
+        verifyNoInteractions(jwtUtil, refreshTokenService);
     }
 
     @Test
@@ -98,15 +109,19 @@ class UserServiceTest {
     // --- login ---
 
     @Test
-    void login_comCredenciaisValidas_retornaToken() {
+    void login_comCredenciaisValidas_retornaTokenPair() {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("senha123", "hashed_password")).thenReturn(true);
         when(jwtUtil.generateToken("test@example.com", 1L)).thenReturn("jwt-token-gerado");
+        when(jwtUtil.getAccessTokenTtlMs()).thenReturn(900_000L);
+        when(refreshTokenService.issue(existingUser)).thenReturn("refresh-plain");
 
-        LoginResponse response = userService.login("test@example.com", "senha123");
+        TokenPairResponse response = userService.login("test@example.com", "senha123");
 
         assertThat(response).isNotNull();
-        assertThat(response.getToken()).isEqualTo("jwt-token-gerado");
+        assertThat(response.accessToken()).isEqualTo("jwt-token-gerado");
+        assertThat(response.refreshToken()).isEqualTo("refresh-plain");
+        assertThat(response.expiresIn()).isEqualTo(900L);
     }
 
     @Test
@@ -124,6 +139,19 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> userService.login("test@example.com", "senha_errada"))
                 .isInstanceOf(BadCredentialsException.class);
+    }
+
+    @Test
+    void login_comContaPendente_lancaAccountNotActivated() {
+        existingUser.setStatus(UserStatus.PENDING_ACTIVATION);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("senha123", "hashed_password")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.login("test@example.com", "senha123"))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.ACCOUNT_NOT_ACTIVATED));
+        verifyNoInteractions(refreshTokenService);
     }
 
     // --- getUserProfile ---
@@ -176,6 +204,70 @@ class UserServiceTest {
 
         assertThat(response).isEqualTo("Foto atualizada com sucesso");
         assertThat(existingUser.getProfilePicture()).isEqualTo("profile_pictures/1_foto.jpg");
+    }
+
+    @Test
+    void uploadProfilePictureResponse_comImagemValida_retornaUrls() {
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(any())).thenReturn(existingUser);
+        when(storageService.getUrl("profile_pictures/1_foto.jpg")).thenReturn("https://signed-url.example.com/profile_pictures/1_foto.jpg");
+
+        UploadResponse response = userService.uploadProfilePictureResponse(1L, file);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getInternalUrl()).isEqualTo("/auth/1/profile-picture");
+        assertThat(response.getSignedUrl()).isEqualTo("https://signed-url.example.com/profile_pictures/1_foto.jpg");
+        assertThat(existingUser.getProfilePicture()).isEqualTo("profile_pictures/1_foto.jpg");
+    }
+
+    @Test
+    void getUserProfile_retornaProfilePictureUrl() {
+        existingUser.setProfilePicture("profile_pictures/1_foto.jpg");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(storageService.getUrl("profile_pictures/1_foto.jpg")).thenReturn("https://signed-url.example.com/profile_pictures/1_foto.jpg");
+
+        UserResponseDTO response = userService.getUserProfile(1L);
+
+        assertThat(response.getProfilePicture()).isEqualTo("/auth/1/profile-picture");
+        assertThat(response.getProfilePictureUrl()).isEqualTo("https://signed-url.example.com/profile_pictures/1_foto.jpg");
+    }
+
+    // --- changePassword ---
+
+    @Test
+    void changePassword_comSenhaAtualCorreta_atualizaSenhaERevogaRefreshTokens() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("senha_atual", "hashed_password")).thenReturn(true);
+        when(passwordEncoder.matches("senha_nova", "hashed_password")).thenReturn(false);
+        when(passwordEncoder.encode("senha_nova")).thenReturn("hash_nova");
+
+        userService.changePassword(1L, "senha_atual", "senha_nova");
+
+        verify(userRepository).save(argThat(u -> u.getPassword().equals("hash_nova")));
+        verify(refreshTokenService).revokeAllForUser(1L);
+    }
+
+    @Test
+    void changePassword_comSenhaAtualErrada_lancaBadCredentialsSemAlterar() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("errada", "hashed_password")).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.changePassword(1L, "errada", "senha_nova"))
+                .isInstanceOf(BadCredentialsException.class);
+        verify(userRepository, never()).save(any());
+        verify(refreshTokenService, never()).revokeAllForUser(any());
+    }
+
+    @Test
+    void changePassword_comNovaSenhaIgualAtual_lancaBusinessRule() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("mesma", "hashed_password")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.changePassword(1L, "mesma", "mesma"))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(userRepository, never()).save(any());
+        verify(refreshTokenService, never()).revokeAllForUser(any());
     }
 
     // --- deleteUser ---

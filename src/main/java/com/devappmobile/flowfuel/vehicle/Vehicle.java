@@ -10,8 +10,10 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import com.devappmobile.flowfuel.refuel.Refuel;
+import com.devappmobile.flowfuel.refuel.RefuelType;
 import com.devappmobile.flowfuel.user.User;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +44,9 @@ public class Vehicle {
 
     @Column(name = "capacity", nullable = false)
     private Integer capacity;
+
+    @Column(name = "battery_capacity", precision = 8, scale = 2)
+    private BigDecimal batteryCapacity;
 
     private String brand;
     private String model;
@@ -90,6 +95,31 @@ public class Vehicle {
 
     public String getConsumptionUnit() {
         return energyType != null ? energyType.getConsumptionUnit() : "km/L";
+    }
+
+    public BigDecimal getEffectiveCapacity(RefuelType refuelType) {
+        if (refuelType == RefuelType.ELECTRIC) {
+            return batteryCapacity;
+        }
+        return capacity != null ? BigDecimal.valueOf(capacity) : null;
+    }
+
+    public RefuelType defaultRefuelType() {
+        if (energyType == null) return RefuelType.FUEL;
+        return switch (energyType) {
+            case ELECTRIC -> RefuelType.ELECTRIC;
+            case COMBUSTION -> RefuelType.FUEL;
+            case HYBRID -> null;
+        };
+    }
+
+    public boolean acceptsRefuelType(RefuelType refuelType) {
+        if (refuelType == null || energyType == null) return false;
+        return switch (energyType) {
+            case COMBUSTION -> refuelType == RefuelType.FUEL;
+            case ELECTRIC -> refuelType == RefuelType.ELECTRIC;
+            case HYBRID -> true;
+        };
     }
 
     public void addRefuel(Refuel refuel) {

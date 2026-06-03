@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Getter
@@ -23,6 +24,7 @@ public class VehicleResponseDTO {
     private String fuelSubType;
     private Integer currentKm;
     private Integer capacity;
+    private BigDecimal batteryCapacity;
     private String brand;
     private String model;
     private Integer manufactureYear;
@@ -42,6 +44,7 @@ public class VehicleResponseDTO {
                 .fuelSubType(v.getFuelSubType())
                 .currentKm(v.getCurrentKm())
                 .capacity(v.getCapacity())
+                .batteryCapacity(v.getBatteryCapacity())
                 .brand(v.getBrand())
                 .model(v.getModel())
                 .manufactureYear(v.getManufactureYear())
