@@ -108,7 +108,7 @@ class RateLimitFilterIntegrationTest {
                     .content("""
                             {"email":"user%d@test.com","password":"senha123","name":"U"}
                             """.formatted(i)))
-                    .andExpect(status().isOk());
+                    .andExpect(status().isCreated());
         }
 
         mockMvc.perform(post("/api/v1/auth/register")

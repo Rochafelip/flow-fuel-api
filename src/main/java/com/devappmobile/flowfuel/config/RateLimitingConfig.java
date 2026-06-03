@@ -17,6 +17,7 @@ import java.util.Map;
  *   <li>{@code POST /api/v1/auth/login} — 5 tentativas/minuto</li>
  *   <li>{@code POST /api/v1/auth/forgot-password} — 3 tentativas/hora</li>
  *   <li>{@code POST /api/v1/auth/register} — 10 tentativas/hora</li>
+ *   <li>{@code POST /api/v1/auth/resend-activation} — 3 tentativas/hora</li>
  * </ul>
  *
  * <p>Habilitado por padrao. Desligue com {@code flowfuel.rate-limit.enabled=false}
@@ -42,7 +43,9 @@ public class RateLimitingConfig {
                 AUTH_BASE + "/forgot-password",
                 Bandwidth.builder().capacity(3).refillGreedy(3, Duration.ofHours(1)).build(),
                 AUTH_BASE + "/register",
-                Bandwidth.builder().capacity(10).refillGreedy(10, Duration.ofHours(1)).build());
+                Bandwidth.builder().capacity(10).refillGreedy(10, Duration.ofHours(1)).build(),
+                AUTH_BASE + "/resend-activation",
+                Bandwidth.builder().capacity(3).refillGreedy(3, Duration.ofHours(1)).build());
         return new RateLimitFilter(limits, FILTER_ORDER);
     }
 }

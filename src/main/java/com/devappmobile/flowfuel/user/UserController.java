@@ -4,6 +4,7 @@ import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -16,15 +17,28 @@ public class UserController {
 
     private final UserService userService;
     private final PasswordResetService passwordResetService;
+    private final AccountActivationService accountActivationService;
     private final com.devappmobile.flowfuel.storage.StorageService storageService;
 
+    /**
+     * Cadastra a conta (status PENDING_ACTIVATION) e dispara o email de ativacao.
+     * NAO loga o usuario: nao retorna tokens. O login so funciona apos ativar.
+     */
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody UserRegisterDTO dto) {
-        AuthResponse response = userService.register(dto);
+    public ResponseEntity<UserResponseDTO> register(@Valid @RequestBody UserRegisterDTO dto) {
+        UserResponseDTO created = userService.register(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + response.accessToken());
-        return ResponseEntity.ok().headers(headers).body(response);
+    @PostMapping("/activate")
+    public ResponseEntity<Void> activate(@Valid @RequestBody ActivateAccountRequest request) {
+        accountActivationService.activate(request.token());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/resend-activation")
+    public AccountActivationResponse resendActivation(@Valid @RequestBody ResendActivationRequest request) {
+        return accountActivationService.resendActivation(request.email());
     }
 
     @PostMapping("/login")

@@ -237,8 +237,18 @@ Modelo **JWT Access + Refresh Token rotacionado** ([ADR-003](adr/ADR-003-autenti
 ### Fluxo
 
 ```
+0. POST /api/v1/auth/register
+   → UserService cria a conta com status PENDING_ACTIVATION (NÃO loga mais o usuário)
+   → AccountActivationService.sendActivation: gera token de ativação (uso único, TTL 1h,
+     hash SHA-256 em activation_tokens) e envia o link por email (AccountActivationNotifier)
+   → Retorna: 201 Created + UserResponseDTO (sem tokens)
+   → POST /api/v1/auth/activate { token } → consome o token e muda status para ACTIVE
+   → POST /api/v1/auth/resend-activation { email } → reenvia o link (anti-enumeração)
+   → ActivationTokenCleanupJob diário remove tokens expirados/usados
+
 1. POST /api/v1/auth/login
    → UserService valida email + senha (BCrypt)
+   → Se status != ACTIVE → 403 ACCOUNT_NOT_ACTIVATED (conta pendente de ativação)
    → JwtUtil.generateAccessToken (TTL 15 min)
    → RefreshTokenService.issue (TTL 30 dias, hash SHA-256 em refresh_tokens)
    → Retorna: { accessToken, refreshToken, expiresIn }
@@ -286,6 +296,17 @@ Modelo **JWT Access + Refresh Token rotacionado** ([ADR-003](adr/ADR-003-autenti
 | Revogação | Logout, troca de senha ou detecção de re-uso |
 | Limpeza | `RefreshTokenCleanupJob` (diário) |
 
+### Detalhes do Token de Ativação ([ADR-014](adr/ADR-014-ativacao-conta.md))
+
+| Propriedade | Valor |
+|---|---|
+| Formato | Token opaco (32 bytes aleatórios, base64-url) — **não é JWT** |
+| TTL padrão | 60 minutos (`flowfuel.account-activation.token-ttl-minutes`) |
+| Armazenamento | Tabela `activation_tokens` (hash SHA-256, nunca o plaintext) |
+| Uso único | `used_at` — segunda apresentação falha (anti-replay sem Redis) |
+| Entrega | `AccountActivationNotifier` (SMTP em prod via `flowfuel.mail.enabled=true`; stub que loga em dev) |
+| Limpeza | `ActivationTokenCleanupJob` (diário) |
+
 ### Endpoints públicos (sem autenticação)
 
 | Endpoint | Método |
@@ -293,6 +314,8 @@ Modelo **JWT Access + Refresh Token rotacionado** ([ADR-003](adr/ADR-003-autenti
 | `/api/v1/auth/register` | POST |
 | `/api/v1/auth/login` | POST |
 | `/api/v1/auth/refresh` | POST |
+| `/api/v1/auth/activate` | POST |
+| `/api/v1/auth/resend-activation` | POST |
 | `/api/v1/auth/forgot-password` | POST |
 | `/api/v1/auth/reset-password` | POST |
 | `/v3/api-docs/**` | GET |
@@ -344,10 +367,11 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 | password | String | NOT NULL, BCrypt |
 | name | String | opcional |
 | phone | String | opcional |
+| status | UserStatus | NOT NULL, STRING — `PENDING_ACTIVATION` no cadastro, `ACTIVE` após ativar (V7); default `ACTIVE` para contas legadas |
 | profile_picture | String | **chave do objeto** no bucket S3-compatível (ex.: `profile_pictures/{userId}_foto.jpg`) — ADR-005 |
 | created_at / updated_at | LocalDateTime | auto |
 
-**Relacionamentos:** `@OneToMany(vehicles)`, `@OneToMany(refreshTokens)`.
+**Relacionamentos:** `@OneToMany(vehicles)`, `@OneToMany(refreshTokens)`, `@OneToMany(activationTokens)`.
 
 ### Vehicle
 
@@ -482,7 +506,7 @@ Inferência no `RefuelRequestDTO`:
 
 #### `POST /api/v1/auth/register`
 
-Cria um novo usuário e **já emite o par de tokens** (login automático — o cliente entra logado sem chamar `/auth/login` em seguida).
+Cria um novo usuário com status `PENDING_ACTIVATION` e dispara o email com o link de ativação. **Não loga mais o usuário automaticamente** ([ADR-014](adr/ADR-014-ativacao-conta.md)): nenhum token é emitido. O login só funciona após a conta ser ativada.
 
 **Autenticação:** Pública
 
@@ -491,9 +515,41 @@ Cria um novo usuário e **já emite o par de tokens** (login automático — o c
 { "email": "usuario@email.com", "password": "minimo6", "name": "Felipe Rocha" }
 ```
 
-**Response 200:** `AuthResponse` — `{ user: UserResponseDTO (sem password), accessToken, refreshToken, expiresIn }`. Também devolve `Authorization: Bearer <accessToken>` no header.
+**Response 201 Created:** `UserResponseDTO` (sem `password`, sem tokens).
 
 **Erros:** `409 CONFLICT` (e-mail já existe), `400 BAD_REQUEST` (validação)
+
+---
+
+#### `POST /api/v1/auth/activate`
+
+Ativa a conta a partir do token recebido no link de ativação. Token de uso único.
+
+**Autenticação:** Pública (o token de ativação é o segredo)
+
+**Request:**
+```json
+{ "token": "..." }
+```
+
+**Response 204 No Content**
+
+**Erros:** `401 UNAUTHORIZED` (`AUTH_ACTIVATION_INVALID` — token inválido, expirado ou já usado)
+
+---
+
+#### `POST /api/v1/auth/resend-activation`
+
+Reenvia o link de ativação. Resposta idêntica exista ou não o email e esteja ou não a conta pendente (anti-enumeração). Só reenvia de fato se a conta existe e ainda está `PENDING_ACTIVATION`.
+
+**Autenticação:** Pública
+
+**Request:**
+```json
+{ "email": "usuario@email.com" }
+```
+
+**Response 200:** `AccountActivationResponse` — `{ "message": "..." }`. Nos perfis **dev/teste** (`flowfuel.account-activation.expose-token=true`) inclui também `activationToken` para facilitar o teste sem email.
 
 ---
 
@@ -519,7 +575,7 @@ Autentica e devolve o par de tokens.
 
 Header de resposta: `Authorization: Bearer <accessToken>`
 
-**Erros:** `401 UNAUTHORIZED` (credenciais inválidas)
+**Erros:** `401 UNAUTHORIZED` (credenciais inválidas), `403 FORBIDDEN` (`ACCOUNT_NOT_ACTIVATED` — conta pendente de ativação)
 
 ---
 

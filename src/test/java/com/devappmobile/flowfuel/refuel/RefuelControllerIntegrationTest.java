@@ -1,6 +1,7 @@
 package com.devappmobile.flowfuel.refuel;
 
 import com.devappmobile.flowfuel.user.UserRepository;
+import com.devappmobile.flowfuel.user.UserStatus;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,6 +40,11 @@ class RefuelControllerIntegrationTest {
                 .content("""
                         {"email":"%s","password":"senha123","name":"User"}
                         """.formatted(email)));
+        // ativa a conta recem-criada (login bloqueado enquanto PENDING_ACTIVATION)
+        userRepository.findByEmail(email).ifPresent(u -> {
+            u.setStatus(UserStatus.ACTIVE);
+            userRepository.save(u);
+        });
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""

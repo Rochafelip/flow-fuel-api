@@ -22,9 +22,11 @@ public enum ErrorCode {
     AUTH_REFRESH_EXPIRED(HttpStatus.UNAUTHORIZED, "Refresh token expirado"),
     AUTH_REFRESH_REVOKED(HttpStatus.UNAUTHORIZED, "Refresh token revogado"),
     AUTH_RESET_INVALID(HttpStatus.UNAUTHORIZED, "Token de redefinição de senha inválido"),
+    AUTH_ACTIVATION_INVALID(HttpStatus.UNAUTHORIZED, "Token de ativação inválido"),
 
     // 403 — autorizacao
     FORBIDDEN_OPERATION(HttpStatus.FORBIDDEN, "Operação não permitida"),
+    ACCOUNT_NOT_ACTIVATED(HttpStatus.FORBIDDEN, "Conta não ativada"),
 
     // 404 — recurso ausente
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "Recurso não encontrado"),

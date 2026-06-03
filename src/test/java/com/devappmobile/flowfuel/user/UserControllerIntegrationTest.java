@@ -28,13 +28,40 @@ class UserControllerIntegrationTest {
         userRepository.deleteAll();
     }
 
-    private MvcResult registrar(String email, String password) throws Exception {
+    /** Registra a conta sem ativar (status PENDING_ACTIVATION). */
+    private MvcResult registrarSemAtivar(String email, String password) throws Exception {
         return mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"%s","name":"Teste"}
                         """.formatted(email, password)))
                 .andReturn();
+    }
+
+    /**
+     * Registra e ja ativa a conta (atalho para os testes que so precisam de um
+     * usuario logavel). O fluxo de ativacao em si e coberto pelos testes dedicados.
+     */
+    private MvcResult registrar(String email, String password) throws Exception {
+        MvcResult result = registrarSemAtivar(email, password);
+        userRepository.findByEmail(email).ifPresent(u -> {
+            u.setStatus(UserStatus.ACTIVE);
+            userRepository.save(u);
+        });
+        return result;
+    }
+
+    /** Solicita reenvio do link de ativacao; com expose-token=true devolve o token. */
+    private String solicitarReenvioAtivacao(String email) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/resend-activation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"%s"}
+                        """.formatted(email)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        return body.has("activationToken") ? body.get("activationToken").asText() : null;
     }
 
     private String obterToken(String email, String password) throws Exception {
@@ -50,24 +77,101 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void register_comDadosValidos_retorna200ECorpoSemSenha() throws Exception {
+    void register_comDadosValidos_retorna201ComUsuarioSemTokens() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"novo@test.com","password":"senha123","name":"Novo"}
                         """))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn();
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
-        // register agora ja devolve usuario + par de tokens (login automatico)
-        JsonNode user = body.get("user");
-        assertThat(user.get("id").asLong()).isPositive();
-        assertThat(user.get("email").asText()).isEqualTo("novo@test.com");
-        assertThat(user.has("password")).isFalse();
-        assertThat(body.get("accessToken").asText()).isNotBlank();
-        assertThat(body.get("refreshToken").asText()).isNotBlank();
-        assertThat(body.get("expiresIn").asLong()).isPositive();
+        // register NAO loga mais: devolve so o usuario criado, sem tokens
+        assertThat(body.get("id").asLong()).isPositive();
+        assertThat(body.get("email").asText()).isEqualTo("novo@test.com");
+        assertThat(body.has("password")).isFalse();
+        assertThat(body.has("accessToken")).isFalse();
+        assertThat(body.has("refreshToken")).isFalse();
+    }
+
+    // --- ativacao de conta ---
+    // No perfil de teste (expose-token=true) o resend-activation devolve o token no corpo.
+
+    @Test
+    void login_comContaPendente_retorna403() throws Exception {
+        registrarSemAtivar("pendente@test.com", "senha123");
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"pendente@test.com","password":"senha123"}
+                        """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCOUNT_NOT_ACTIVATED"));
+    }
+
+    @Test
+    void activate_comTokenValido_ativaContaEPermiteLogin() throws Exception {
+        registrarSemAtivar("ativar@test.com", "senha123");
+        String token = solicitarReenvioAtivacao("ativar@test.com");
+        assertThat(token).isNotBlank();
+
+        mockMvc.perform(post("/api/v1/auth/activate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"token":"%s"}
+                        """.formatted(token)))
+                .andExpect(status().isNoContent());
+
+        // Apos ativar, o login passa a funcionar.
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"ativar@test.com","password":"senha123"}
+                        """))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void activate_comTokenInvalido_retorna401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/activate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"token":"token-que-nunca-existiu"}
+                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void activate_tokenReutilizado_retorna401() throws Exception {
+        registrarSemAtivar("reuseativ@test.com", "senha123");
+        String token = solicitarReenvioAtivacao("reuseativ@test.com");
+
+        mockMvc.perform(post("/api/v1/auth/activate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"token":"%s"}
+                        """.formatted(token)))
+                .andExpect(status().isNoContent());
+
+        // Token de uso unico: segunda tentativa falha.
+        mockMvc.perform(post("/api/v1/auth/activate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"token":"%s"}
+                        """.formatted(token)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void resendActivation_emailInexistenteOuJaAtivo_retorna200SemToken() throws Exception {
+        // Anti-enumeracao: email inexistente nao revela nada.
+        assertThat(solicitarReenvioAtivacao("naoexiste-ativ@test.com")).isNull();
+
+        // Conta ja ativa tambem nao reenvia token.
+        registrar("jaativa@test.com", "senha123");
+        assertThat(solicitarReenvioAtivacao("jaativa@test.com")).isNull();
     }
 
     @Test
@@ -319,7 +423,7 @@ class UserControllerIntegrationTest {
     @Test
     void getProfile_autenticado_retornaPerfilSemSenha() throws Exception {
         MvcResult registerResult = registrar("perfil@test.com", "senha123");
-        long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("user").get("id").asLong();
+        long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
         String token = obterToken("perfil@test.com", "senha123");
 
         MvcResult result = mockMvc.perform(get("/api/v1/auth/{id}/profile", userId)
@@ -341,7 +445,7 @@ class UserControllerIntegrationTest {
     @Test
     void getProfile_deOutroUsuario_retorna403() throws Exception {
         MvcResult registerA = registrar("a@test.com", "senha123");
-        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("user").get("id").asLong();
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
         String tokenB = obterToken("b@test.com", "senha123");
 
         mockMvc.perform(get("/api/v1/auth/{id}/profile", userIdA)
@@ -352,7 +456,7 @@ class UserControllerIntegrationTest {
     @Test
     void updateProfile_deOutroUsuario_retorna403() throws Exception {
         MvcResult registerA = registrar("a2@test.com", "senha123");
-        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("user").get("id").asLong();
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
         String tokenB = obterToken("b2@test.com", "senha123");
 
         mockMvc.perform(put("/api/v1/auth/{id}/profile", userIdA)
@@ -367,7 +471,7 @@ class UserControllerIntegrationTest {
     @Test
     void deleteUser_deOutroUsuario_retorna403ENaoRemove() throws Exception {
         MvcResult registerA = registrar("a3@test.com", "senha123");
-        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("user").get("id").asLong();
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
         String tokenB = obterToken("b3@test.com", "senha123");
 
         mockMvc.perform(delete("/api/v1/auth/{id}", userIdA)
@@ -380,7 +484,7 @@ class UserControllerIntegrationTest {
     @Test
     void uploadProfilePicture_deOutroUsuario_retorna403() throws Exception {
         MvcResult registerA = registrar("a4@test.com", "senha123");
-        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("user").get("id").asLong();
+        long userIdA = objectMapper.readTree(registerA.getResponse().getContentAsString()).get("id").asLong();
         String tokenB = obterToken("b4@test.com", "senha123");
 
         mockMvc.perform(multipart("/api/v1/auth/{id}/upload-profile-picture", userIdA)
@@ -393,7 +497,7 @@ class UserControllerIntegrationTest {
     @Test
     void deleteUser_autenticado_retorna200ERemoveUsuario() throws Exception {
         MvcResult registerResult = registrar("del@test.com", "senha123");
-        long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("user").get("id").asLong();
+        long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
         String token = obterToken("del@test.com", "senha123");
 
         mockMvc.perform(delete("/api/v1/auth/{id}", userId)
