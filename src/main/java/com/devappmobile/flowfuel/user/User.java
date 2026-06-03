@@ -37,6 +37,15 @@ public class User {
     @Column(name = "profile_picture")
     private String profilePicture;
 
+    /**
+     * Estado de ativacao. Default ACTIVE para que o construtor de 3 args
+     * ({@link DevDataSeeder}, testes) crie contas ja ativas; o cadastro via API
+     * sobrescreve explicitamente para {@link UserStatus#PENDING_ACTIVATION}.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private UserStatus status = UserStatus.ACTIVE;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 
@@ -51,6 +60,11 @@ public class User {
         this.email = email;
         this.password = password;
         this.name = name;
+    }
+
+    /** Conta ativada (email confirmado) — pre-requisito para login. */
+    public boolean isActive() {
+        return status == UserStatus.ACTIVE;
     }
 
     // Métodos utilitários

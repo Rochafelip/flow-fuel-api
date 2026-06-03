@@ -64,7 +64,7 @@ Motoristas que querem monitorar custo e eficiência energética de seus veículo
 | ORM / Persistência | Spring Data JPA + Hibernate | via Spring Boot |
 | Banco (produção) | PostgreSQL Gerenciado | Railway / Neon ([ADR-004](adr/ADR-004-banco-postgresql.md)) |
 | Banco (testes / dev) | PostgreSQL (Testcontainers) e/ou H2 | Testcontainers preferencial |
-| Migrations | Flyway | V1, V2, V3 em `src/main/resources/db/migration` |
+| Migrations | Flyway | V1…V6 em `src/main/resources/db/migration` |
 | Documentação | SpringDoc OpenAPI (Swagger UI) | 2.0.4 |
 | Boilerplate | Lombok | via Spring Boot |
 | Validação | Spring Validation (Bean Validation) | via Spring Boot |
@@ -142,8 +142,17 @@ com.devappmobile.flowfuel/
 │   ├── RefreshTokenRepository.java
 │   ├── RefreshTokenService.java      ← Emissão / rotação / revogação
 │   ├── RefreshTokenCleanupJob.java   ← Limpeza diária de tokens expirados
+│   ├── PasswordResetToken.java       ← Entidade JPA (password_reset_tokens)
+│   ├── PasswordResetTokenRepository.java
+│   ├── PasswordResetService.java     ← Fluxo "esqueci minha senha" (request + reset)
+│   ├── PasswordResetTokenCleanupJob.java
+│   ├── PasswordResetNotifier.java    ← Canal de entrega do token (interface)
+│   ├── LoggingPasswordResetNotifier.java ← Stub: registra o token em log (sem email)
+│   ├── ForgotPasswordRequest.java / ForgotPasswordResponse.java
+│   ├── ResetPasswordRequest.java
 │   ├── UploadResponse.java           ← { internalUrl, signedUrl } para upload de foto
-│   └── TokenPairResponse.java        ← { accessToken, refreshToken, expiresIn }
+│   ├── TokenPairResponse.java        ← { accessToken, refreshToken, expiresIn }
+│   └── AuthResponse.java             ← { user, accessToken, refreshToken, expiresIn } (register)
 │
 ├── vehicle/                          ← Módulo de veículos
 │   ├── Vehicle.java
@@ -228,8 +237,18 @@ Modelo **JWT Access + Refresh Token rotacionado** ([ADR-003](adr/ADR-003-autenti
 ### Fluxo
 
 ```
+0. POST /api/v1/auth/register
+   → UserService cria a conta com status PENDING_ACTIVATION (NÃO loga mais o usuário)
+   → AccountActivationService.sendActivation: gera token de ativação (uso único, TTL 1h,
+     hash SHA-256 em activation_tokens) e envia o link por email (AccountActivationNotifier)
+   → Retorna: 201 Created + UserResponseDTO (sem tokens)
+   → POST /api/v1/auth/activate { token } → consome o token e muda status para ACTIVE
+   → POST /api/v1/auth/resend-activation { email } → reenvia o link (anti-enumeração)
+   → ActivationTokenCleanupJob diário remove tokens expirados/usados
+
 1. POST /api/v1/auth/login
    → UserService valida email + senha (BCrypt)
+   → Se status != ACTIVE → 403 ACCOUNT_NOT_ACTIVATED (conta pendente de ativação)
    → JwtUtil.generateAccessToken (TTL 15 min)
    → RefreshTokenService.issue (TTL 30 dias, hash SHA-256 em refresh_tokens)
    → Retorna: { accessToken, refreshToken, expiresIn }
@@ -248,6 +267,14 @@ Modelo **JWT Access + Refresh Token rotacionado** ([ADR-003](adr/ADR-003-autenti
    → POST /api/v1/auth/logout { refreshToken } → revoga o token
    → PUT /api/v1/auth/{userId}/password → revoga todas as sessões do usuário
    → RefreshTokenCleanupJob diário remove tokens expirados/revogados
+
+5. Esqueci minha senha:
+   → POST /api/v1/auth/forgot-password { email } → gera token de reset (uso único, TTL 30 min,
+     hash SHA-256 em password_reset_tokens); resposta idêntica exista ou não o email (anti-enumeração)
+   → Entrega via PasswordResetNotifier (stub que loga; email a implementar)
+   → POST /api/v1/auth/reset-password { token, newPassword } → troca a senha, consome o token
+     e revoga todas as sessões ativas do usuário
+   → PasswordResetTokenCleanupJob diário remove tokens expirados/usados
 ```
 
 ### Detalhes do Access Token
@@ -269,6 +296,17 @@ Modelo **JWT Access + Refresh Token rotacionado** ([ADR-003](adr/ADR-003-autenti
 | Revogação | Logout, troca de senha ou detecção de re-uso |
 | Limpeza | `RefreshTokenCleanupJob` (diário) |
 
+### Detalhes do Token de Ativação ([ADR-014](adr/ADR-014-ativacao-conta.md))
+
+| Propriedade | Valor |
+|---|---|
+| Formato | Token opaco (32 bytes aleatórios, base64-url) — **não é JWT** |
+| TTL padrão | 60 minutos (`flowfuel.account-activation.token-ttl-minutes`) |
+| Armazenamento | Tabela `activation_tokens` (hash SHA-256, nunca o plaintext) |
+| Uso único | `used_at` — segunda apresentação falha (anti-replay sem Redis) |
+| Entrega | `AccountActivationNotifier` (SMTP em prod via `flowfuel.mail.enabled=true`; stub que loga em dev) |
+| Limpeza | `ActivationTokenCleanupJob` (diário) |
+
 ### Endpoints públicos (sem autenticação)
 
 | Endpoint | Método |
@@ -276,6 +314,10 @@ Modelo **JWT Access + Refresh Token rotacionado** ([ADR-003](adr/ADR-003-autenti
 | `/api/v1/auth/register` | POST |
 | `/api/v1/auth/login` | POST |
 | `/api/v1/auth/refresh` | POST |
+| `/api/v1/auth/activate` | POST |
+| `/api/v1/auth/resend-activation` | POST |
+| `/api/v1/auth/forgot-password` | POST |
+| `/api/v1/auth/reset-password` | POST |
 | `/v3/api-docs/**` | GET |
 | `/swagger-ui/**`, `/swagger-ui.html` | GET |
 
@@ -325,10 +367,11 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 | password | String | NOT NULL, BCrypt |
 | name | String | opcional |
 | phone | String | opcional |
+| status | UserStatus | NOT NULL, STRING — `PENDING_ACTIVATION` no cadastro, `ACTIVE` após ativar (V7); default `ACTIVE` para contas legadas |
 | profile_picture | String | **chave do objeto** no bucket S3-compatível (ex.: `profile_pictures/{userId}_foto.jpg`) — ADR-005 |
 | created_at / updated_at | LocalDateTime | auto |
 
-**Relacionamentos:** `@OneToMany(vehicles)`, `@OneToMany(refreshTokens)`.
+**Relacionamentos:** `@OneToMany(vehicles)`, `@OneToMany(refreshTokens)`, `@OneToMany(activationTokens)`.
 
 ### Vehicle
 
@@ -351,8 +394,8 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 | Campo | Tipo | Regra |
 |---|---|---|
 | id | Long | PK |
-| odometer | Integer | NOT NULL, derivado no servidor (`vehicle.currentKm + trip`) — não enviado pelo cliente |
-| km_since_last_refuel | Integer | igual ao `trip` informado na request |
+| odometer | Integer | NOT NULL, ≥ maior odômetro registrado |
+| km_since_last_refuel | Integer | calculado |
 | energy_amount | BigDecimal | ≥ 0.01, ≤ capacidade |
 | price_per_unit | BigDecimal | dentro do range por tipo |
 | total_amount | BigDecimal | `@PrePersist / @PreUpdate` (`energy × price`) |
@@ -371,6 +414,19 @@ Todos os demais exigem `Authorization: Bearer <accessToken>`.
 | expires_at | LocalDateTime | NOT NULL |
 | revoked_at | LocalDateTime | nullable |
 | replaced_by | FK → refresh_tokens | rastreia rotação |
+
+### PasswordResetToken
+
+Tabela `password_reset_tokens` (migration V6). Mesmo padrão do RefreshToken: grava apenas o hash; token de uso único e curta duração.
+
+| Campo | Tipo | Regra |
+|---|---|---|
+| id | Long | PK |
+| user_id | Long | FK → users (ON DELETE CASCADE) |
+| token_hash | String | SHA-256 do plaintext (único) |
+| expires_at | LocalDateTime | NOT NULL (TTL padrão 30 min) |
+| created_at | LocalDateTime | auto |
+| used_at | LocalDateTime | nullable — marca o consumo (uso único) |
 
 ### EnergyType (Enum)
 
@@ -418,8 +474,8 @@ Inferência no `RefuelRequestDTO`:
 
 ### Abastecimentos
 
-- Entrada via `trip` (1–5000 km percorridos desde o último abastecimento); odômetro absoluto é **derivado** (`vehicle.currentKm + trip`) e nunca enviado pelo cliente
-- `km_since_last_refuel = trip` (persistido); `vehicle.currentKm` é atualizado para o novo odômetro absoluto
+- Odômetro ≥ maior odômetro já registrado para o veículo
+- `km_since_last_refuel` calculado automaticamente
 - `total_amount = energy_amount × price_per_unit` via `@PrePersist/@PreUpdate`
 - `refuelType` resolvido por inferência (COMBUSTION→FUEL, ELECTRIC→ELECTRIC) ou obrigatório (HYBRID)
 - Combinações inválidas (ex.: `refuelType=ELECTRIC` em veículo COMBUSTION) ⇒ `400 BusinessRuleException`
@@ -450,7 +506,7 @@ Inferência no `RefuelRequestDTO`:
 
 #### `POST /api/v1/auth/register`
 
-Cria um novo usuário.
+Cria um novo usuário com status `PENDING_ACTIVATION` e dispara o email com o link de ativação. **Não loga mais o usuário automaticamente** ([ADR-014](adr/ADR-014-ativacao-conta.md)): nenhum token é emitido. O login só funciona após a conta ser ativada.
 
 **Autenticação:** Pública
 
@@ -459,9 +515,41 @@ Cria um novo usuário.
 { "email": "usuario@email.com", "password": "minimo6", "name": "Felipe Rocha" }
 ```
 
-**Response 200:** `UserResponseDTO` (sem `password`)
+**Response 201 Created:** `UserResponseDTO` (sem `password`, sem tokens).
 
 **Erros:** `409 CONFLICT` (e-mail já existe), `400 BAD_REQUEST` (validação)
+
+---
+
+#### `POST /api/v1/auth/activate`
+
+Ativa a conta a partir do token recebido no link de ativação. Token de uso único.
+
+**Autenticação:** Pública (o token de ativação é o segredo)
+
+**Request:**
+```json
+{ "token": "..." }
+```
+
+**Response 204 No Content**
+
+**Erros:** `401 UNAUTHORIZED` (`AUTH_ACTIVATION_INVALID` — token inválido, expirado ou já usado)
+
+---
+
+#### `POST /api/v1/auth/resend-activation`
+
+Reenvia o link de ativação. Resposta idêntica exista ou não o email e esteja ou não a conta pendente (anti-enumeração). Só reenvia de fato se a conta existe e ainda está `PENDING_ACTIVATION`.
+
+**Autenticação:** Pública
+
+**Request:**
+```json
+{ "email": "usuario@email.com" }
+```
+
+**Response 200:** `AccountActivationResponse` — `{ "message": "..." }`. Nos perfis **dev/teste** (`flowfuel.account-activation.expose-token=true`) inclui também `activationToken` para facilitar o teste sem email.
 
 ---
 
@@ -487,7 +575,7 @@ Autentica e devolve o par de tokens.
 
 Header de resposta: `Authorization: Bearer <accessToken>`
 
-**Erros:** `401 UNAUTHORIZED` (credenciais inválidas)
+**Erros:** `401 UNAUTHORIZED` (credenciais inválidas), `403 FORBIDDEN` (`ACCOUNT_NOT_ACTIVATED` — conta pendente de ativação)
 
 ---
 
@@ -520,6 +608,38 @@ Revoga o refresh token informado.
 ```
 
 **Response 204 No Content**
+
+---
+
+#### `POST /api/v1/auth/forgot-password`
+
+Inicia o fluxo "esqueci minha senha". Resposta idêntica exista ou não o email (anti-enumeração).
+
+**Autenticação:** Pública
+
+**Request:**
+```json
+{ "email": "usuario@email.com" }
+```
+
+**Response 200:** `ForgotPasswordResponse` — `{ "message": "..." }`. No perfil **dev** (`flowfuel.password-reset.expose-token=true`) inclui também `resetToken` para facilitar o teste sem email. O token é opaco (hash SHA-256 em `password_reset_tokens`), de uso único e expira em 30 min; cada solicitação invalida tokens anteriores. Entrega via `PasswordResetNotifier` (hoje um stub que loga o token).
+
+---
+
+#### `POST /api/v1/auth/reset-password`
+
+Efetiva a nova senha a partir de um token de redefinição válido. Consome o token (uso único) e **revoga todas as sessões ativas** do usuário.
+
+**Autenticação:** Pública (o token de reset é o segredo)
+
+**Request:**
+```json
+{ "token": "...", "newPassword": "novaSenha456" }
+```
+
+**Response 204 No Content**
+
+**Erros:** `401 UNAUTHORIZED` (`AUTH_RESET_INVALID` — token inválido, expirado ou já usado)
 
 ---
 
@@ -670,7 +790,7 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
 ```json
 {
   "vehicleId": 1,
-  "trip": 450,
+  "odometer": 45500,
   "energyAmount": 40.5,
   "pricePerUnit": 5.89,
   "fullTank": true,
@@ -681,17 +801,15 @@ Exclui a conta (cascateia veículos, abastecimentos e refresh tokens).
 | Campo | Obrigatório | Validação |
 |---|---|---|
 | vehicleId | Sim | `@NotNull` |
-| trip | Sim | `[1..5000]` — km percorridos desde o último abastecimento |
+| odometer | Sim | ≥ 0 e ≥ maior odômetro registrado |
 | energyAmount | Sim | ≥ 0,01 e ≤ capacidade efetiva (tanque ou bateria) |
 | pricePerUnit | Sim | dentro do range pelo `refuelType` resolvido |
 | fullTank | Não | default `false` |
 | refuelType | Depende | `FUEL` ou `ELECTRIC`. Obrigatório para HYBRID; inferido nos demais. Combinação inválida ⇒ 400 |
 
-**Cálculo automático do odômetro:** o servidor deriva `odometer = vehicle.currentKm + trip` (ou `lastRefuel.odometer + trip` quando já houver histórico) e persiste o valor absoluto, mantendo `kmSinceLastRefuel = trip`. O `vehicle.currentKm` é atualizado automaticamente após o save.
+**Response 200:** `RefuelResponseDTO` com `kmSinceLastRefuel` e `totalAmount` calculados; `vehicle.currentKm` é atualizado automaticamente.
 
-**Response 200:** `RefuelResponseDTO` com `odometer` (absoluto, derivado), `kmSinceLastRefuel` e `totalAmount` calculados.
-
-**Erros típicos:** `400` (validação `trip`, `energyAmount`/`price` fora do range, veículo sem `currentKm` inicial), `403` (não dono), `404` (veículo não existe).
+**Erros típicos:** `400` (validação / odômetro / range), `403` (não dono), `404` (veículo não existe).
 
 #### Demais rotas
 
@@ -808,7 +926,7 @@ Para `ELECTRIC`, as três `*Unit` mudam para `kWh` / `R$/kWh` / `km/kWh` e a sem
 | Aspecto | `Refuel` | `VehicleEvent` |
 |---|---|---|
 | Propósito | Abastecimento operacional | Histórico financeiro / prontuário |
-| Atualiza `vehicle.currentKm` | Sim (derivado de `trip`) | Não |
+| Atualiza `vehicle.currentKm` | Sim | Não |
 | Cálculo de consumo | Sim (km/L, km/kWh) | Não |
 | Entra no Dashboard de métricas | Sim | Não (apenas listagem) |
 | Tipos | `FUEL`, `ELECTRIC` | `FUEL`, `MAINTENANCE`, `OIL_CHANGE`, `CAR_WASH`, `TIRES`, `INSURANCE`, `TAX`, `DOCUMENTS`, `OTHER` |
@@ -891,9 +1009,9 @@ Header de correlação: `X-Request-Id: 5a2b...` (gerado pelo `RequestIdFilter` s
 ### Fluxo completo: novo usuário → primeiro abastecimento
 
 ```
-[1] CADASTRO
+[1] CADASTRO (já entra logado — emite tokens)
     POST /api/v1/auth/register     { email, password, name }
-    ← 200 UserResponseDTO
+    ← 200 { user: UserResponseDTO, accessToken, refreshToken, expiresIn: 900 }
 
 [2] LOGIN
     POST /api/v1/auth/login        { email, password }
@@ -904,9 +1022,9 @@ Header de correlação: `X-Request-Id: 5a2b...` (gerado pelo `RequestIdFilter` s
     ← 200 Vehicle
 
 [4] REGISTRAR ABASTECIMENTO
-    POST /api/v1/refuels           { vehicleId, trip, energyAmount, pricePerUnit, fullTank }
-    ← 200 Refuel (odometer, kmSinceLastRefuel, totalAmount calculados)
-    [automático] vehicle.currentKm ← vehicle.currentKm + trip
+    POST /api/v1/refuels           { vehicleId, odometer, energyAmount, pricePerUnit, fullTank }
+    ← 200 Refuel (kmSinceLastRefuel, totalAmount calculados)
+    [automático] vehicle.currentKm ← odometer
 
 [5] VER DASHBOARD
     GET  /api/v1/dashboard/vehicle/{id}

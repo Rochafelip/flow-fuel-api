@@ -2,6 +2,7 @@ package com.devappmobile.flowfuel.dashboard;
 
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.devappmobile.flowfuel.user.UserRepository;
+import com.devappmobile.flowfuel.user.UserStatus;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,11 @@ class DashboardControllerIntegrationTest {
                 .content("""
                         {"email":"%s","password":"senha123","name":"User"}
                         """.formatted(email)));
+        // ativa a conta recem-criada (login bloqueado enquanto PENDING_ACTIVATION)
+        userRepository.findByEmail(email).ifPresent(u -> {
+            u.setStatus(UserStatus.ACTIVE);
+            userRepository.save(u);
+        });
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -60,19 +66,19 @@ class DashboardControllerIntegrationTest {
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }
 
-    private void criarAbastecimento(String token, long vehicleId, int trip) throws Exception {
+    private void criarAbastecimento(String token, long vehicleId, int odometer) throws Exception {
         mockMvc.perform(post("/api/v1/refuels")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
                           "vehicleId": %d,
-                          "trip": %d,
+                          "odometer": %d,
                           "energyAmount": 40.0,
                           "pricePerUnit": 5.89,
                           "fullTank": true
                         }
-                        """.formatted(vehicleId, trip)))
+                        """.formatted(vehicleId, odometer)))
                 .andExpect(status().isOk());
     }
 
@@ -86,7 +92,7 @@ class DashboardControllerIntegrationTest {
     void getDashboard_veiculoDoProprioUsuario_retornaMetricas() throws Exception {
         String token = obterToken("dash@test.com");
         long vehicleId = criarVeiculo(token);
-        criarAbastecimento(token, vehicleId, 500);
+        criarAbastecimento(token, vehicleId, 50500);
 
         mockMvc.perform(get("/api/v1/dashboard/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
@@ -112,8 +118,8 @@ class DashboardControllerIntegrationTest {
     void getDashboard_comDoisAbastecimentosCheios_retornaConsumoMedio() throws Exception {
         String token = obterToken("consumo@test.com");
         long vehicleId = criarVeiculo(token);
-        criarAbastecimento(token, vehicleId, 500);
-        criarAbastecimento(token, vehicleId, 500);
+        criarAbastecimento(token, vehicleId, 50500);
+        criarAbastecimento(token, vehicleId, 51000);
 
         mockMvc.perform(get("/api/v1/dashboard/vehicle/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
@@ -142,7 +148,7 @@ class DashboardControllerIntegrationTest {
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"vehicleId":%d,"trip":400,"energyAmount":30.0,
+                        {"vehicleId":%d,"odometer":50400,"energyAmount":30.0,
                          "pricePerUnit":5.90,"fullTank":true,"refuelType":"FUEL"}
                         """.formatted(vehicleId)))
                 .andExpect(status().isOk());
@@ -151,7 +157,7 @@ class DashboardControllerIntegrationTest {
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"vehicleId":%d,"trip":100,"energyAmount":20.0,
+                        {"vehicleId":%d,"odometer":50500,"energyAmount":20.0,
                          "pricePerUnit":1.20,"fullTank":true,"refuelType":"ELECTRIC"}
                         """.formatted(vehicleId)))
                 .andExpect(status().isOk());
@@ -196,7 +202,7 @@ class DashboardControllerIntegrationTest {
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"vehicleId":%d,"trip":400,"energyAmount":30.0,
+                        {"vehicleId":%d,"odometer":50400,"energyAmount":30.0,
                          "pricePerUnit":5.90,"fullTank":true}
                         """.formatted(vehicleId)))
                 .andExpect(status().isBadRequest());

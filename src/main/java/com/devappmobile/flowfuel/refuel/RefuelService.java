@@ -35,12 +35,9 @@ public class RefuelService {
                 .map(Refuel::getOdometer)
                 .orElse(vehicle.getCurrentKm());
 
-        if (lastOdometer == null) {
-            throw new BusinessRuleException(
-                    "Veículo sem quilometragem inicial; defina currentKm antes de abastecer");
+        if (request.getOdometer() < lastOdometer) {
+            throw new BusinessRuleException("Odômetro não pode ser menor que o último registrado");
         }
-
-        int newOdometer = lastOdometer + request.getTrip();
 
         RefuelType refuelType = resolveRefuelType(vehicle, request.getRefuelType());
 
@@ -53,17 +50,17 @@ public class RefuelService {
         validateCapacity(vehicle, refuelType, request.getEnergyAmount());
 
         Refuel refuel = new Refuel();
-        refuel.setOdometer(newOdometer);
+        refuel.setOdometer(request.getOdometer());
         refuel.setEnergyAmount(request.getEnergyAmount());
         refuel.setPricePerUnit(request.getPricePerUnit());
         refuel.setFullTank(request.getFullTank() != null ? request.getFullTank() : false);
-        refuel.setKmSinceLastRefuel(request.getTrip());
+        refuel.setKmSinceLastRefuel(request.getOdometer() - lastOdometer);
         refuel.setRefuelType(refuelType);
         refuel.setVehicle(vehicle);
 
         Refuel saved = refuelRepository.save(refuel);
 
-        vehicle.setCurrentKm(newOdometer);
+        vehicle.setCurrentKm(request.getOdometer());
         vehicleRepository.save(vehicle);
 
         return RefuelResponseDTO.from(saved);
@@ -106,21 +103,19 @@ public class RefuelService {
 
         Vehicle vehicle = refuel.getVehicle();
 
-        if (request.getTrip() != null) {
+        if (request.getOdometer() != null) {
             Integer previousOdometer = refuelRepository
                     .findTopByVehicleIdAndOdometerLessThanOrderByOdometerDesc(
                             vehicle.getId(), refuel.getOdometer())
                     .map(Refuel::getOdometer)
                     .orElse(vehicle.getCurrentKm());
 
-            if (previousOdometer == null) {
-                throw new BusinessRuleException(
-                        "Veículo sem quilometragem inicial; não é possível recalcular o odômetro");
+            if (request.getOdometer() < previousOdometer) {
+                throw new BusinessRuleException("Odômetro não pode ser menor que o anterior");
             }
 
-            int newOdometer = previousOdometer + request.getTrip();
-            refuel.setOdometer(newOdometer);
-            refuel.setKmSinceLastRefuel(request.getTrip());
+            refuel.setOdometer(request.getOdometer());
+            refuel.setKmSinceLastRefuel(request.getOdometer() - previousOdometer);
         }
 
         if (request.getEnergyAmount() != null) {

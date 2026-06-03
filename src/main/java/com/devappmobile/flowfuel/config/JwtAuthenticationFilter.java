@@ -38,9 +38,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // getServletPath() é vazio no MockMvc (ainda não processado pelo DispatcherServlet);
         // getRequestURI() é sempre confiável em ambos os ambientes.
         String path = request.getRequestURI();
-        return path.equals("/api/v1/auth/register")
+        return path.startsWith("/actuator/health")
+                || path.equals("/api/v1/auth/register")
                 || path.equals("/api/v1/auth/login")
                 || path.equals("/api/v1/auth/refresh")
+                || path.equals("/api/v1/auth/forgot-password")
+                || path.equals("/api/v1/auth/reset-password")
+                || path.equals("/api/v1/auth/activate")
+                || path.equals("/api/v1/auth/resend-activation")
                 || path.startsWith("/v3/api-docs")
                 || path.startsWith("/swagger-ui")
                 || path.equals("/swagger-ui.html")

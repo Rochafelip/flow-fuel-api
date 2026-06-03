@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.common.error.AppException;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.config.JwtUtil;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
@@ -26,7 +27,13 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
     private final StorageService storageService;
+    private final AccountActivationService accountActivationService;
 
+    /**
+     * Cadastra um novo usuario com status {@link UserStatus#PENDING_ACTIVATION} e
+     * dispara o envio do link de ativacao por email. NAO loga o usuario: o login
+     * so passa a funcionar apos a confirmacao do email (ver {@link #login}).
+     */
     public UserResponseDTO register(UserRegisterDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
             throw new ConflictException(ErrorCode.EMAIL_ALREADY_REGISTERED, "Email já cadastrado");
@@ -37,14 +44,22 @@ public class UserService {
         user.setPassword(passwordEncoder.encode(dto.getPassword()));
         user.setName(dto.getName());
         user.setPhone(dto.getPhone());
+        user.setStatus(UserStatus.PENDING_ACTIVATION);
 
-        return UserResponseDTO.from(userRepository.save(user));
+        User saved = userRepository.save(user);
+        accountActivationService.sendActivation(saved);
+        return UserResponseDTO.from(saved);
     }
 
     public TokenPairResponse login(String email, String password) {
         User user = userRepository.findByEmail(email)
                 .filter(u -> passwordEncoder.matches(password, u.getPassword()))
                 .orElseThrow(() -> new BadCredentialsException("Email ou senha inválidos"));
+
+        if (!user.isActive()) {
+            throw new AppException(ErrorCode.ACCOUNT_NOT_ACTIVATED,
+                    "Conta não ativada. Verifique seu email para ativar a conta.");
+        }
 
         return issueTokenPair(user);
     }

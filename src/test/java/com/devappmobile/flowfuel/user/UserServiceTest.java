@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.common.error.AppException;
+import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.config.JwtUtil;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ConflictException;
@@ -30,6 +32,7 @@ class UserServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
     @Mock private StorageService storageService;
+    @Mock private AccountActivationService accountActivationService;
 
     @InjectMocks private UserService userService;
 
@@ -44,7 +47,7 @@ class UserServiceTest {
     // --- register ---
 
     @Test
-    void register_comEmailNovo_retornaDto() {
+    void register_comEmailNovo_criaContaPendenteEDisparaAtivacao() {
         UserRegisterDTO dto = new UserRegisterDTO();
         dto.setEmail("novo@example.com");
         dto.setPassword("senha123");
@@ -60,9 +63,14 @@ class UserServiceTest {
 
         UserResponseDTO response = userService.register(dto);
 
+        // register NAO loga mais: retorna so o usuario, sem tokens
         assertThat(response).isNotNull();
         assertThat(response.getEmail()).isEqualTo("novo@example.com");
         assertThat(response.getId()).isEqualTo(2L);
+        // conta nasce pendente e o link de ativacao e disparado
+        verify(userRepository).save(argThat(u -> u.getStatus() == UserStatus.PENDING_ACTIVATION));
+        verify(accountActivationService).sendActivation(argThat(u -> u.getId().equals(2L)));
+        verifyNoInteractions(jwtUtil, refreshTokenService);
     }
 
     @Test
@@ -131,6 +139,19 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> userService.login("test@example.com", "senha_errada"))
                 .isInstanceOf(BadCredentialsException.class);
+    }
+
+    @Test
+    void login_comContaPendente_lancaAccountNotActivated() {
+        existingUser.setStatus(UserStatus.PENDING_ACTIVATION);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("senha123", "hashed_password")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.login("test@example.com", "senha123"))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.ACCOUNT_NOT_ACTIVATED));
+        verifyNoInteractions(refreshTokenService);
     }
 
     // --- getUserProfile ---
