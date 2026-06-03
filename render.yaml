@@ -78,6 +78,27 @@ services:
       - key: B2_BUCKET_NAME
         sync: false
 
+      # --- Email de ativacao de conta (SendGrid via SMTP) ---
+      # Liga o SmtpAccountActivationNotifier. Enquanto MAIL_ENABLED!=true o link
+      # so vai para o log (LoggingAccountActivationNotifier) — nao use assim em prod.
+      - key: MAIL_ENABLED
+        value: "true"
+      - key: MAIL_HOST
+        value: smtp.sendgrid.net
+      - key: MAIL_PORT
+        value: "587"
+      # SendGrid: o username e literalmente a string "apikey"; a senha e a API key.
+      - key: MAIL_USERNAME
+        value: apikey
+      - key: MAIL_PASSWORD
+        sync: false
+      # Remetente: precisa ser um Single Sender ou dominio verificado no SendGrid.
+      - key: MAIL_FROM
+        value: no-reply@flowfuel.app
+      # Base do link de ativacao (rota do frontend que consome o token).
+      - key: ACCOUNT_ACTIVATION_LINK_BASE_URL
+        sync: false
+
       # Observabilidade (ADR-008) — opcionais; sem DSN o Sentry fica off.
       - key: SENTRY_DSN
         sync: false
