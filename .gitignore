@@ -40,3 +40,5 @@ maven.zip
 package-lock.json
 
 /Claude/*
+# Ambiente prod local (segredos)
+.env.prod
