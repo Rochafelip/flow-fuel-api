@@ -2,6 +2,7 @@ package com.devappmobile.flowfuel.vehicle;
 
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.devappmobile.flowfuel.user.UserRepository;
+import com.devappmobile.flowfuel.user.UserStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,13 +40,18 @@ class VehicleControllerIntegrationTest {
                 .content("""
                         {"email":"%s","password":"senha123","name":"User"}
                         """.formatted(email)));
+        // ativa a conta recem-criada (login bloqueado enquanto PENDING_ACTIVATION)
+        userRepository.findByEmail(email).ifPresent(u -> {
+            u.setStatus(UserStatus.ACTIVE);
+            userRepository.save(u);
+        });
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123"}
                         """.formatted(email)))
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString()).get("token").asText();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
     }
 
     private long criarVeiculo(String token) throws Exception {

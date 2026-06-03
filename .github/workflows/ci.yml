@@ -1,0 +1,69 @@
+# FLOW-015 | Pipeline CI/CD
+#
+# Fluxo:
+#   - PR para main/staging  -> build + testes (gate de merge)
+#   - push para staging     -> deploy automatico no Render (ambiente staging)
+#   - push para main        -> deploy com aprovacao manual (environment protection)
+#
+# Os deploys disparam Deploy Hooks do Render guardados nos secrets do GitHub:
+#   - RENDER_DEPLOY_HOOK_STAGING
+#   - RENDER_DEPLOY_HOOK_PROD
+# A aprovacao manual de producao e configurada em
+# Settings > Environments > production (required reviewers).
+name: CI/CD
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+
+# Cancela execucoes antigas do mesmo ref quando chega um push novo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Testes usam H2 em memoria (src/test/resources/application.properties),
+      # entao nao e preciso subir banco no CI.
+      - name: Build & test
+        run: ./mvnw -B clean verify
+
+  deploy-staging:
+    name: Deploy staging
+    needs: build-and-test
+    # So em push direto para staging (nao em PR).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Trigger Render deploy (staging)
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_STAGING }}"
+
+  deploy-production:
+    name: Deploy production
+    needs: build-and-test
+    # So em push direto para main (nao em PR).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Aprovacao manual: configure required reviewers neste environment.
+    environment: production
+    steps:
+      - name: Trigger Render deploy (production)
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_PROD }}"

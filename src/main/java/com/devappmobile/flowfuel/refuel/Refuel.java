@@ -45,6 +45,10 @@ public class Refuel {
     @Column(name = "full_tank")
     private Boolean fullTank = false;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refuel_type", nullable = false, length = 16)
+    private RefuelType refuelType;
+
     @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "vehicle_id", nullable = false)

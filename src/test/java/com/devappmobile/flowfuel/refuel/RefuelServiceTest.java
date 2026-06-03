@@ -165,6 +165,76 @@ class RefuelServiceTest {
     }
 
     @Test
+    void createRefuel_veiculoHibrido_semRefuelType_lancaBusinessRule() {
+        vehicle.setEnergyType(EnergyType.HYBRID);
+        vehicle.setBatteryCapacity(BigDecimal.valueOf(40));
+
+        RefuelRequestDTO dto = buildRequest(1500, 30.0, 5.50);
+        dto.setRefuelType(null);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("refuelType");
+        verify(refuelRepository, never()).save(any());
+    }
+
+    @Test
+    void createRefuel_veiculoHibrido_comRefuelTypeEletrico_validaContraBatteryCapacity() {
+        vehicle.setEnergyType(EnergyType.HYBRID);
+        vehicle.setBatteryCapacity(BigDecimal.valueOf(40));
+
+        RefuelRequestDTO dto = buildRequest(1500, 50.0, 1.20);
+        dto.setRefuelType(RefuelType.ELECTRIC);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("capacidade");
+        verify(refuelRepository, never()).save(any());
+    }
+
+    @Test
+    void createRefuel_veiculoCombustao_comRefuelTypeEletrico_lancaBusinessRule() {
+        RefuelRequestDTO dto = buildRequest(1500, 30.0, 1.20);
+        dto.setRefuelType(RefuelType.ELECTRIC);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> refuelService.createRefuel(owner, dto))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("incompatível");
+        verify(refuelRepository, never()).save(any());
+    }
+
+    @Test
+    void createRefuel_veiculoEletricoSemBatteryCapacity_naoValidaCapacidade() {
+        vehicle.setEnergyType(EnergyType.ELECTRIC);
+        vehicle.setCapacity(null);
+        vehicle.setBatteryCapacity(null);
+
+        RefuelRequestDTO dto = buildRequest(1500, 999.0, 1.20);
+
+        Refuel saved = new Refuel();
+        saved.setId(7L);
+        saved.setVehicle(vehicle);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.save(any())).thenReturn(saved);
+        when(vehicleRepository.save(any())).thenReturn(vehicle);
+
+        RefuelResponseDTO response = refuelService.createRefuel(owner, dto);
+
+        assertThat(response).isNotNull();
+    }
+
+    @Test
     void createRefuel_veiculoEletrico_aceitaPrecoNaFaixaEletrica() {
         vehicle.setEnergyType(EnergyType.ELECTRIC);
         RefuelRequestDTO dto = buildRequest(1500, 30.0, 1.50);

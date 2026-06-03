@@ -99,6 +99,7 @@ public class VehicleService {
         if (request.getFuelSubType() != null) vehicle.setFuelSubType(request.getFuelSubType());
         if (request.getCurrentKm() != null) vehicle.setCurrentKm(request.getCurrentKm());
         if (request.getCapacity() != null) vehicle.setCapacity(request.getCapacity());
+        if (request.getBatteryCapacity() != null) vehicle.setBatteryCapacity(request.getBatteryCapacity());
         if (request.getBrand() != null) vehicle.setBrand(request.getBrand());
         if (request.getModel() != null) vehicle.setModel(request.getModel());
         if (request.getManufactureYear() != null) vehicle.setManufactureYear(request.getManufactureYear());

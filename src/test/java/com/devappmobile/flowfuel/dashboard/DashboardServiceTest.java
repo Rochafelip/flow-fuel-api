@@ -4,7 +4,9 @@ import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
+import com.devappmobile.flowfuel.refuel.RefuelType;
 import com.devappmobile.flowfuel.user.User;
+import com.devappmobile.flowfuel.vehicle.EnergyType;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +48,7 @@ class DashboardServiceTest {
         vehicle = new Vehicle();
         vehicle.setId(10L);
         vehicle.setUser(owner);
+        vehicle.setEnergyType(EnergyType.COMBUSTION);
     }
 
     @Test
@@ -98,6 +101,31 @@ class DashboardServiceTest {
         assertThat(body.getTotalRefuels()).isEqualTo(5L);
         assertThat(body.getTotalSpent()).isEqualByComparingTo(BigDecimal.valueOf(1500.00));
         assertThat(body.getTotalEnergy()).isEqualByComparingTo(BigDecimal.valueOf(250.0));
+        assertThat(body.getEnergyType()).isEqualTo(EnergyType.COMBUSTION);
+        assertThat(body.getEnergyUnit()).isEqualTo("litros");
+        assertThat(body.getPriceUnit()).isEqualTo("R$/litro");
+        assertThat(body.getConsumptionUnit()).isEqualTo("km/L");
+    }
+
+    @Test
+    void getVehicleDashboard_veiculoEletrico_retornaUnidadesEmKwh() {
+        vehicle.setEnergyType(EnergyType.ELECTRIC);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(3L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(180.00)));
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(150.0)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(1.20)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getEnergyType()).isEqualTo(EnergyType.ELECTRIC);
+        assertThat(body.getEnergyUnit()).isEqualTo("kWh");
+        assertThat(body.getPriceUnit()).isEqualTo("R$/kWh");
+        assertThat(body.getConsumptionUnit()).isEqualTo("km/kWh");
+        assertThat(body.getTotalEnergy()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
     }
 
     @Test
@@ -126,6 +154,54 @@ class DashboardServiceTest {
 
         assertThat(body).isNotNull();
         assertThat(body.getAverageConsumption()).isEqualTo(10.0);
+    }
+
+    @Test
+    void getVehicleDashboard_veiculoHibrido_retornaBreakdownComDoisVetores() {
+        vehicle.setEnergyType(EnergyType.HYBRID);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(10L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L))
+                .thenReturn(Optional.of(BigDecimal.valueOf(5090.60)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+
+        when(refuelRepository.getTotalEnergyByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(Optional.of(BigDecimal.valueOf(820.5)));
+        when(refuelRepository.getTotalSpentByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(Optional.of(BigDecimal.valueOf(4860.10)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(Optional.of(BigDecimal.valueOf(5.92)));
+        when(refuelRepository.findFullTankRefuelsByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(List.of());
+
+        when(refuelRepository.getTotalEnergyByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(Optional.of(BigDecimal.valueOf(189.75)));
+        when(refuelRepository.getTotalSpentByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(Optional.of(BigDecimal.valueOf(230.50)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(Optional.of(BigDecimal.valueOf(1.21)));
+        when(refuelRepository.findFullTankRefuelsByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(List.of());
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getEnergyType()).isEqualTo(EnergyType.HYBRID);
+        assertThat(body.getTotalSpent()).isEqualByComparingTo(BigDecimal.valueOf(5090.60));
+        assertThat(body.getTotalRefuels()).isEqualTo(10L);
+        assertThat(body.getTotalEnergy()).isNull();
+        assertThat(body.getAveragePrice()).isNull();
+        assertThat(body.getEnergyUnit()).isNull();
+
+        assertThat(body.getBreakdown()).isNotNull();
+        assertThat(body.getBreakdown().getFuel().getTotalEnergy())
+                .isEqualByComparingTo(BigDecimal.valueOf(820.5));
+        assertThat(body.getBreakdown().getFuel().getEnergyUnit()).isEqualTo("litros");
+        assertThat(body.getBreakdown().getFuel().getPriceUnit()).isEqualTo("R$/litro");
+        assertThat(body.getBreakdown().getElectric().getTotalEnergy())
+                .isEqualByComparingTo(BigDecimal.valueOf(189.75));
+        assertThat(body.getBreakdown().getElectric().getEnergyUnit()).isEqualTo("kWh");
+        assertThat(body.getBreakdown().getElectric().getConsumptionUnit()).isEqualTo("km/kWh");
     }
 
     @Test
