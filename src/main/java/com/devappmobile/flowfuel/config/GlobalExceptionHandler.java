@@ -9,6 +9,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
@@ -90,6 +91,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail pd = problemDetail(ErrorCode.REQUEST_MALFORMED,
                 "Corpo da requisição inválido ou ausente", path);
         return ResponseEntity.status(ErrorCode.REQUEST_MALFORMED.status()).body(pd);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ProblemDetail> handleDataIntegrityViolation(DataIntegrityViolationException ex,
+            HttpServletRequest req) {
+        logClientError(ErrorCode.CONFLICT, req, "Constraint de unicidade violada");
+        return build(ErrorCode.CONFLICT, "Recurso já existe ou viola uma restrição única", req.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)
