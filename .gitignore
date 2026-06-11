@@ -42,3 +42,6 @@ package-lock.json
 /Claude/*
 # Ambiente prod local (segredos)
 .env.prod
+
+# Worktrees ativos do Claude Code (cada um e' um checkout git separado)
+.claude/worktrees/
