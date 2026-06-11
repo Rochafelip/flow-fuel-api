@@ -11,6 +11,7 @@ import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -62,6 +63,7 @@ public class VehicleService {
         return VehicleResponseDTO.from(vehicleRepository.save(vehicle));
     }
 
+    @Transactional
     public void setActiveVehicle(User user, Long vehicleId) {
         findOwned(user, vehicleId);
 
