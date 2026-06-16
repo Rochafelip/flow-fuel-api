@@ -192,6 +192,17 @@
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- DOCKER_HOST negotiation: docker-java shaded in Testcontainers
+					     defaults to API version 1.32; Docker Engine 29+ requires 1.44. -->
+					<systemPropertyVariables>
+						<api.version>1.44</api.version>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<configuration>
 					<annotationProcessorPaths>
@@ -200,19 +211,6 @@
 							<artifactId>lombok</artifactId>
 						</path>
 					</annotationProcessorPaths>
-				</configuration>
-			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<!-- docker-java (shaded in Testcontainers) sends API version 1.32 by
-					     default; Docker Engine 29+ requires minimum 1.44. This system
-					     property sets the negotiation version so Testcontainers can reach
-					     the local Docker daemon. -->
-					<systemPropertyVariables>
-						<api.version>1.44</api.version>
-					</systemPropertyVariables>
 				</configuration>
 			</plugin>
 			<plugin>
