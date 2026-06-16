@@ -133,17 +133,17 @@ public class UserService {
         }
     }
 
-    public UserResponseDTO updateUserProfile(Long userId, UserRegisterDTO dto) {
+    public UserResponseDTO updateUserProfile(Long userId, UserUpdateDTO dto) {
         User user = findUserOrThrow(userId);
 
-        if (dto.getName() != null) user.setName(dto.getName());
-        if (dto.getPhone() != null) user.setPhone(dto.getPhone());
+        if (dto.name() != null) user.setName(dto.name());
+        if (dto.phone() != null) user.setPhone(dto.phone());
 
-        if (dto.getEmail() != null && !dto.getEmail().equals(user.getEmail())) {
-            if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
+        if (dto.email() != null && !dto.email().equals(user.getEmail())) {
+            if (userRepository.findByEmail(dto.email()).isPresent()) {
                 throw new ConflictException(ErrorCode.EMAIL_ALREADY_REGISTERED, "Email já cadastrado");
             }
-            user.setEmail(dto.getEmail());
+            user.setEmail(dto.email());
         }
 
         return UserResponseDTO.from(userRepository.save(user));

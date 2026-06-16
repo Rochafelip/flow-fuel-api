@@ -289,4 +289,69 @@ class UserServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(userRepository, never()).deleteById(any());
     }
+
+    // --- updateUserProfile ---
+
+    @Test
+    void updateUserProfile_comNameEPhone_atualizaSemTocarEmail() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserUpdateDTO dto = new UserUpdateDTO(null, "Novo Nome", "11999990000");
+        UserResponseDTO result = userService.updateUserProfile(1L, dto);
+
+        assertThat(result.getName()).isEqualTo("Novo Nome");
+        assertThat(result.getEmail()).isEqualTo("test@example.com"); // email original preservado
+        verify(userRepository, never()).findByEmail(any());
+    }
+
+    @Test
+    void updateUserProfile_comEmailNovo_verificaDuplicidadeEAtualiza() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(userRepository.findByEmail("novo@example.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserUpdateDTO dto = new UserUpdateDTO("novo@example.com", null, null);
+        UserResponseDTO result = userService.updateUserProfile(1L, dto);
+
+        assertThat(result.getEmail()).isEqualTo("novo@example.com");
+        verify(userRepository).findByEmail("novo@example.com");
+    }
+
+    @Test
+    void updateUserProfile_comEmailDuplicado_lancaConflict() {
+        User outro = new User("outro@example.com", "hash", "Outro");
+        outro.setId(2L);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(userRepository.findByEmail("outro@example.com")).thenReturn(Optional.of(outro));
+
+        UserUpdateDTO dto = new UserUpdateDTO("outro@example.com", null, null);
+
+        assertThatThrownBy(() -> userService.updateUserProfile(1L, dto))
+                .isInstanceOf(ConflictException.class);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void updateUserProfile_comTodosCamposNulos_naoAlteraNada() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserUpdateDTO dto = new UserUpdateDTO(null, null, null);
+        UserResponseDTO result = userService.updateUserProfile(1L, dto);
+
+        assertThat(result.getEmail()).isEqualTo("test@example.com");
+        assertThat(result.getName()).isEqualTo("Test User");
+        verify(userRepository, never()).findByEmail(any());
+    }
+
+    @Test
+    void updateUserProfile_usuarioInexistente_lancaResourceNotFound() {
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+
+        UserUpdateDTO dto = new UserUpdateDTO(null, "Nome", null);
+
+        assertThatThrownBy(() -> userService.updateUserProfile(99L, dto))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
 }
