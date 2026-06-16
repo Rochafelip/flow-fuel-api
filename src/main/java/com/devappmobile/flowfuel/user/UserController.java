@@ -120,7 +120,7 @@ public class UserController {
 
     @PutMapping("/{userId}/profile")
     public UserResponseDTO updateProfile(@PathVariable Long userId,
-            @RequestBody UserRegisterDTO userDetails,
+            @Valid @RequestBody UserUpdateDTO userDetails,
             @AuthenticationPrincipal User authUser) {
         ensureSelf(authUser, userId);
         return userService.updateUserProfile(userId, userDetails);

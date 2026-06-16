@@ -664,4 +664,105 @@ class UserControllerIntegrationTest {
                         """.formatted(segundoToken)))
                 .andExpect(status().isNoContent());
     }
+
+    // --- updateProfile ---
+
+    @Test
+    void updateProfile_emailMalformado_retorna400ComErroDeValidacao() throws Exception {
+        MvcResult reg = registrar("upd1@test.com", "senha123");
+        long userId = objectMapper.readTree(reg.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("upd1@test.com", "senha123");
+
+        MvcResult result = mockMvc.perform(put("/api/v1/auth/{id}/profile", userId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"nao-e-um-email"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString()).containsIgnoringCase("email");
+    }
+
+    @Test
+    void updateProfile_emailVazio_retorna400() throws Exception {
+        MvcResult reg = registrar("upd2@test.com", "senha123");
+        long userId = objectMapper.readTree(reg.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("upd2@test.com", "senha123");
+
+        mockMvc.perform(put("/api/v1/auth/{id}/profile", userId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":""}
+                        """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateProfile_comPasswordNoBody_eIgnoradoERetorna200() throws Exception {
+        MvcResult reg = registrar("upd3@test.com", "senha123");
+        long userId = objectMapper.readTree(reg.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("upd3@test.com", "senha123");
+
+        // Campo "password" não existe em UserUpdateDTO: Jackson deve ignorá-lo silenciosamente
+        MvcResult result = mockMvc.perform(put("/api/v1/auth/{id}/profile", userId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"name":"Nome Atualizado","password":"hacker123"}
+                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(body.get("name").asText()).isEqualTo("Nome Atualizado");
+        // Senha não foi alterada: login com a original ainda funciona
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"upd3@test.com","password":"senha123"}
+                        """))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void updateProfile_atualizacaoValidaDeNameEPhone_retorna200() throws Exception {
+        MvcResult reg = registrar("upd4@test.com", "senha123");
+        long userId = objectMapper.readTree(reg.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("upd4@test.com", "senha123");
+
+        MvcResult result = mockMvc.perform(put("/api/v1/auth/{id}/profile", userId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"name":"Novo Nome","phone":"11988887777"}
+                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(body.get("name").asText()).isEqualTo("Novo Nome");
+        assertThat(body.get("email").asText()).isEqualTo("upd4@test.com");
+    }
+
+    @Test
+    void updateProfile_atualizacaoDeEmailValido_retorna200() throws Exception {
+        MvcResult reg = registrar("upd5@test.com", "senha123");
+        long userId = objectMapper.readTree(reg.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("upd5@test.com", "senha123");
+
+        MvcResult result = mockMvc.perform(put("/api/v1/auth/{id}/profile", userId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"novoemail@test.com"}
+                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(body.get("email").asText()).isEqualTo("novoemail@test.com");
+    }
 }
