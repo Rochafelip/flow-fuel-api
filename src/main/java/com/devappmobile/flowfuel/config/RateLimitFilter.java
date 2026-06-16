@@ -2,9 +2,10 @@ package com.devappmobile.flowfuel.config;
 
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.common.error.ProblemDetailWriter;
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
+import io.github.bucket4j.BucketConfiguration;
 import io.github.bucket4j.ConsumptionProbe;
+import io.github.bucket4j.distributed.BucketProxy;
+import io.github.bucket4j.distributed.proxy.ProxyManager;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,7 +19,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Rate limiting por IP nos endpoints de autenticacao (FLOW-009).
@@ -28,22 +28,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * estourar o limite responde 429 (Too Many Requests) com header {@code Retry-After}
  * e corpo ProblemDetail (RFC 7807), consistente com o resto da API.
  *
- * <p>Os buckets vivem em memoria ({@link ConcurrentHashMap}). Em deploy
- * multi-instancia o limite passa a ser por instancia; para limite global seria
- * necessario um backend distribuido (ex.: Redis via bucket4j-redis).
+ * <p>Os buckets sao mantidos no Redis via {@link ProxyManager} (bucket4j-redis +
+ * Lettuce), garantindo rate limiting efetivo em deploy horizontal. Se o Redis
+ * ficar indisponivel em runtime, o filtro aplica fail-open: loga aviso e deixa
+ * a requisicao passar para nao bloquear todos os usuarios.
  */
 public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
-    /** Configuracao de limite por path exato (ja com o prefixo /api/v1). Imutavel. */
-    private final Map<String, Bandwidth> limitsByPath;
-    /** Bucket por chave "path|ip". */
-    private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketConfiguration> limitsByPath;
+    private final ProxyManager<String> proxyManager;
     private final int order;
 
-    public RateLimitFilter(Map<String, Bandwidth> limitsByPath, int order) {
+    public RateLimitFilter(Map<String, BucketConfiguration> limitsByPath,
+                           ProxyManager<String> proxyManager,
+                           int order) {
         this.limitsByPath = Map.copyOf(limitsByPath);
+        this.proxyManager = proxyManager;
         this.order = order;
     }
 
@@ -54,7 +56,6 @@ public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
 
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
-        // Apenas POST nos paths configurados; o resto passa direto.
         return !"POST".equalsIgnoreCase(request.getMethod())
                 || !limitsByPath.containsKey(request.getRequestURI());
     }
@@ -65,13 +66,21 @@ public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
             @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String path = request.getRequestURI();
-        Bandwidth limit = limitsByPath.get(path); // nao-nulo: garantido por shouldNotFilter
+        BucketConfiguration config = limitsByPath.get(path);
         String clientIp = clientIp(request);
+        String bucketKey = "rl:" + path + "|" + clientIp;
 
-        Bucket bucket = buckets.computeIfAbsent(path + "|" + clientIp,
-                k -> Bucket.builder().addLimit(limit).build());
+        ConsumptionProbe probe;
+        try {
+            BucketProxy bucket = proxyManager.builder().build(bucketKey, () -> config);
+            probe = bucket.tryConsumeAndReturnRemaining(1);
+        } catch (Exception e) {
+            log.warn("Rate limit Redis indisponivel, fail-open. key={} error={}",
+                    bucketKey, e.getMessage());
+            filterChain.doFilter(request, response);
+            return;
+        }
 
-        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
         if (probe.isConsumed()) {
             response.setHeader("X-Rate-Limit-Remaining", Long.toString(probe.getRemainingTokens()));
             filterChain.doFilter(request, response);
@@ -87,10 +96,6 @@ public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
                 "Muitas tentativas. Tente novamente em " + retryAfterSeconds + " segundos.");
     }
 
-    /**
-     * IP do cliente. Atras do proxy TLS (Render) o IP real chega em X-Forwarded-For;
-     * o primeiro elemento da lista e o cliente original. Sem proxy, usa o remote addr.
-     */
     private static String clientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
