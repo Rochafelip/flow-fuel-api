@@ -5,6 +5,7 @@ import io.github.bucket4j.BucketConfiguration;
 import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
+import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.codec.StringCodec;
@@ -53,11 +54,16 @@ public class RateLimitingConfig {
         return RedisClient.create(RedisURI.create(redisUrl));
     }
 
-    @Bean
-    LettuceBasedProxyManager<String> rateLimitProxyManager(RedisClient rateLimitRedisClient) {
-        var connection = rateLimitRedisClient.connect(
+    @Bean(destroyMethod = "close")
+    StatefulRedisConnection<String, byte[]> rateLimitRedisConnection(RedisClient rateLimitRedisClient) {
+        return rateLimitRedisClient.connect(
                 RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE));
-        return LettuceBasedProxyManager.builderFor(connection).build();
+    }
+
+    @Bean
+    LettuceBasedProxyManager<String> rateLimitProxyManager(
+            StatefulRedisConnection<String, byte[]> rateLimitRedisConnection) {
+        return LettuceBasedProxyManager.builderFor(rateLimitRedisConnection).build();
     }
 
     @Bean
