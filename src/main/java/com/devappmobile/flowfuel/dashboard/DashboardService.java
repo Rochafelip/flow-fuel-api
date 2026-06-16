@@ -117,6 +117,27 @@ public class DashboardService {
                 .build();
     }
 
+    /**
+     * Fórmula oficial de consumo médio do produto.
+     *
+     * <p>Para cada par consecutivo de abastecimentos tanque-cheio ordenados do mais recente
+     * ao mais antigo (current, previous), calcula:
+     * <pre>
+     *   kmDriven   = current.odometer - previous.odometer
+     *   energyUsed = current.energyAmount
+     * </pre>
+     * O consumo final é {@code SUM(kmDriven) / SUM(energyUsed)} sobre todos os pares válidos
+     * (kmDriven > 0 e energyUsed > 0), arredondado para 2 casas decimais (HALF_UP).
+     *
+     * <p>Exemplo: 3 abastecimentos [C(3000 km, 40 L), B(2200 km, 35 L), A(1500 km, 30 L)]
+     * → pares: (C-B): 800 km / 40 L; (B-A): 700 km / 35 L
+     * → consumo = (800+700) / (40+35) = 1500/75 = 20,00 km/L
+     *
+     * <p>Retorna 0.0 se houver menos de 2 abastecimentos tanque-cheio ou energia total zero.
+     *
+     * <p>Nota: o campo {@code kmSinceLastRefuel} persistido na entidade Refuel é deliberadamente
+     * ignorado para garantir consistência com o odômetro registrado pelo usuário.
+     */
     private Double calculateAverageConsumption(List<Refuel> fullRefuels) {
         if (fullRefuels.size() < 2) {
             return 0.0;

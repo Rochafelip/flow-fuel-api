@@ -45,3 +45,7 @@ package-lock.json
 
 # Worktrees ativos do Claude Code (cada um e' um checkout git separado)
 .claude/worktrees/
+
+# Testcontainers artifacts extraídos na raiz do projeto
+/META-INF/
+/org/

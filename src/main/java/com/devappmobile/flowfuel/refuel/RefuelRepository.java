@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.refuel;
 
+import com.devappmobile.flowfuel.dashboard.RefuelAggregateProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -78,16 +79,6 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
     Long countByVehicleId(@Param("vehicleId") Long vehicleId);
 
     @Query("""
-                SELECT
-                    SUM(r.kmSinceLastRefuel) / SUM(r.energyAmount)
-                FROM Refuel r
-                WHERE r.vehicle.id = :vehicleId
-                AND r.fullTank = true
-            """)
-    Optional<Double> getAverageConsumptionByVehicleId(
-            @Param("vehicleId") Long vehicleId);
-
-    @Query("""
                 SELECT SUM(r.totalAmount)
                 FROM Refuel r
                 WHERE r.vehicle.id = :vehicleId
@@ -98,5 +89,31 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
             @Param("vehicleId") Long vehicleId,
             @Param("month") int month,
             @Param("year") int year);
+
+    // ── aggregate projections (M5) ───────────────────────────────────────────
+
+    @Query("""
+            SELECT new com.devappmobile.flowfuel.dashboard.RefuelAggregateProjection(
+                COUNT(r), SUM(r.totalAmount), SUM(r.energyAmount), CAST(AVG(r.pricePerUnit) AS BigDecimal))
+            FROM Refuel r WHERE r.vehicle.id = :vehicleId
+            """)
+    RefuelAggregateProjection getAggregatesByVehicleId(@Param("vehicleId") Long vehicleId);
+
+    @Query("""
+            SELECT new com.devappmobile.flowfuel.dashboard.RefuelAggregateProjection(
+                COUNT(r), SUM(r.totalAmount), SUM(r.energyAmount), CAST(AVG(r.pricePerUnit) AS BigDecimal))
+            FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.refuelType = :refuelType
+            """)
+    RefuelAggregateProjection getAggregatesByVehicleIdAndRefuelType(
+            @Param("vehicleId") Long vehicleId,
+            @Param("refuelType") RefuelType refuelType);
+
+    // ── pageable full-tank variants (M5) ────────────────────────────────────
+
+    Page<Refuel> findByVehicleIdAndFullTankTrueOrderByRefuelDateDesc(
+            Long vehicleId, Pageable pageable);
+
+    Page<Refuel> findByVehicleIdAndRefuelTypeAndFullTankTrueOrderByRefuelDateDesc(
+            Long vehicleId, RefuelType refuelType, Pageable pageable);
 
 }

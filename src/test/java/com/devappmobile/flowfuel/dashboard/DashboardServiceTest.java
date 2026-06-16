@@ -204,6 +204,47 @@ class DashboardServiceTest {
         assertThat(body.getBreakdown().getElectric().getConsumptionUnit()).isEqualTo("km/kWh");
     }
 
+    /**
+     * Contrato da fórmula oficial de consumo médio (ver Javadoc de calculateAverageConsumption).
+     * Usado como referência para futuras otimizações (M5).
+     *
+     * Cenário: 3 abastecimentos tanque-cheio [C(3000 km, 40 L), B(2200 km, 35 L), A(1500 km, 30 L)]
+     * Par C-B: 800 km / 40 L; par B-A: 700 km / 35 L
+     * Consumo esperado = (800+700) / (40+35) = 1500/75 = 20.00 km/L
+     */
+    @Test
+    void calculateAverageConsumption_formulaOficial_tresAbastecimentosTanqueCheio() {
+        Refuel refuelC = new Refuel();
+        refuelC.setOdometer(3000);
+        refuelC.setEnergyAmount(BigDecimal.valueOf(40.0));
+        refuelC.setFullTank(true);
+        refuelC.setRefuelDate(LocalDateTime.now());
+
+        Refuel refuelB = new Refuel();
+        refuelB.setOdometer(2200);
+        refuelB.setEnergyAmount(BigDecimal.valueOf(35.0));
+        refuelB.setFullTank(true);
+        refuelB.setRefuelDate(LocalDateTime.now().minusDays(7));
+
+        Refuel refuelA = new Refuel();
+        refuelA.setOdometer(1500);
+        refuelA.setEnergyAmount(BigDecimal.valueOf(30.0));
+        refuelA.setFullTank(true);
+        refuelA.setRefuelDate(LocalDateTime.now().minusDays(14));
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(3L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(900)));
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(105)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(8.57)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.of(refuelC));
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of(refuelC, refuelB, refuelA));
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getAverageConsumption()).isEqualTo(20.0);
+    }
+
     @Test
     void getVehicleDashboard_comApenasUmTanqueCheio_consumoEhZero() {
         Refuel singleRefuel = new Refuel();

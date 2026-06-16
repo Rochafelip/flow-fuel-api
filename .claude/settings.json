@@ -12,7 +12,14 @@
       "Bash(grep -n \"POST /api/v1/auth/register\\\\|UserResponseDTO\\\\` \\(sem\\\\|Response 200:\\\\*\\\\* \\\\`UserResponseDTO\" Claude/DOCUMENTACAO_TECNICA.md)",
       "Bash(echo \"exit=$? \\(0 = compilou\\)\")",
       "Bash(docker build *)",
-      "Bash(mvn -q -Dtest=GlobalExceptionHandlerTest test)"
+      "Bash(mvn -q -Dtest=GlobalExceptionHandlerTest test)",
+      "Bash(git commit *)",
+      "Bash(grep \"{\\\\${\" /home/rocha/Projetos/flowfuel/src/main/resources/application.properties)",
+      "Bash(awk -F= '{print $2}')",
+      "Bash(grep -oE '\\\\$\\\\{[A-Z_]+')",
+      "Bash(grep -oE '\\\\$\\\\{[A-Z_]+' /home/rocha/Projetos/flowfuel/src/main/resources/application.properties)",
+      "Bash(mvn -q clean compile)",
+      "Bash(DOCKER_HOST=unix:///var/run/docker.sock ./mvnw test -Dtest=RateLimitFilterIntegrationTest)"
     ]
   }
 }
