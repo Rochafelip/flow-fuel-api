@@ -42,8 +42,9 @@ class RateLimitFilterTest {
 
         filter.doFilter(request, response, chain);
 
-        // fail-open: request must pass through (chain invoked, not 429)
+        // fail-open: request must pass through (chain invoked, not 429, no Retry-After)
         assertThat(response.getStatus()).isNotEqualTo(429);
+        assertThat(response.getHeader("Retry-After")).isNull();
         assertThat(chain.getRequest())
                 .as("filter chain must have been called (request passed through)")
                 .isNotNull();
