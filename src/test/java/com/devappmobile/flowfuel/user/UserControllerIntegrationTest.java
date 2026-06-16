@@ -421,6 +421,26 @@ class UserControllerIntegrationTest {
     }
 
     @Test
+    void login_comEmailMalformado_retorna400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"nao-e-um-email","password":"senha123"}
+                        """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void login_comPasswordVazio_retorna400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"valido@test.com","password":""}
+                        """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void getProfile_autenticado_retornaPerfilSemSenha() throws Exception {
         MvcResult registerResult = registrar("perfil@test.com", "senha123");
         long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();

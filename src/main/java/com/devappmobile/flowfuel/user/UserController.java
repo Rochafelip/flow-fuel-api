@@ -2,6 +2,8 @@ package com.devappmobile.flowfuel.user;
 
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -42,8 +44,8 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<TokenPairResponse> login(@RequestBody LoginRequest loginRequest) {
-        TokenPairResponse tokens = userService.login(loginRequest.getEmail(), loginRequest.getPassword());
+    public ResponseEntity<TokenPairResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+        TokenPairResponse tokens = userService.login(loginRequest.email(), loginRequest.password());
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + tokens.accessToken());
@@ -137,24 +139,5 @@ public class UserController {
         }
     }
 
-    public static class LoginRequest {
-        private String email;
-        private String password;
-
-        public String getEmail() {
-            return email;
-        }
-
-        public void setEmail(String email) {
-            this.email = email;
-        }
-
-        public String getPassword() {
-            return password;
-        }
-
-        public void setPassword(String password) {
-            this.password = password;
-        }
-    }
+    public record LoginRequest(@NotBlank @Email String email, @NotBlank String password) {}
 }
