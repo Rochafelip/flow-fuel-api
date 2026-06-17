@@ -1,7 +1,7 @@
 package com.devappmobile.flowfuel.vehicleevent;
 
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
-import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
@@ -21,14 +21,13 @@ public class VehicleEventService {
 
     private final VehicleEventRepository vehicleEventRepository;
     private final VehicleRepository vehicleRepository;
+    private final AuthorizationHelper authorizationHelper;
 
     public VehicleEventResponseDTO create(User user, VehicleEventRequestDTO request) {
         Vehicle vehicle = vehicleRepository.findById(request.getVehicleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", request.getVehicleId()));
 
-        if (!ownsVehicle(user, vehicle)) {
-            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsVehicle(user, vehicle);
 
         VehicleEvent event = new VehicleEvent();
         event.setVehicle(vehicle);
@@ -44,18 +43,14 @@ public class VehicleEventService {
     public VehicleEventResponseDTO getById(User user, Long id) {
         VehicleEvent event = vehicleEventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Evento", id));
-        if (!ownsEvent(user, event)) {
-            throw new ForbiddenOperationException("Evento não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsEvent(user, event);
         return VehicleEventResponseDTO.from(event);
     }
 
     public VehicleEventResponseDTO update(User user, Long id, VehicleEventRequestDTO request) {
         VehicleEvent event = vehicleEventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Evento", id));
-        if (!ownsEvent(user, event)) {
-            throw new ForbiddenOperationException("Evento não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsEvent(user, event);
 
         if (request.getType() != null) event.setType(request.getType());
         if (request.getAmount() != null) event.setAmount(request.getAmount());
@@ -69,9 +64,7 @@ public class VehicleEventService {
     public void delete(User user, Long id) {
         VehicleEvent event = vehicleEventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Evento", id));
-        if (!ownsEvent(user, event)) {
-            throw new ForbiddenOperationException("Evento não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsEvent(user, event);
         vehicleEventRepository.deleteById(id);
     }
 
@@ -79,9 +72,7 @@ public class VehicleEventService {
             VehicleEventType type, LocalDate startDate, LocalDate endDate, Pageable pageable) {
         Vehicle vehicle = vehicleRepository.findById(vehicleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
-        if (!ownsVehicle(user, vehicle)) {
-            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsVehicle(user, vehicle);
 
         Page<VehicleEvent> page;
         if (type != null && startDate != null && endDate != null) {
@@ -104,11 +95,4 @@ public class VehicleEventService {
         return PageResponseDTO.from(page, VehicleEventResponseDTO::from);
     }
 
-    private boolean ownsVehicle(User user, Vehicle vehicle) {
-        return vehicle.getUser().getId().equals(user.getId());
-    }
-
-    private boolean ownsEvent(User user, VehicleEvent event) {
-        return ownsVehicle(user, event.getVehicle());
-    }
 }

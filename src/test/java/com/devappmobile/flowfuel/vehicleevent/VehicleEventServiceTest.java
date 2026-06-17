@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.vehicleevent;
 
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
@@ -35,6 +36,7 @@ class VehicleEventServiceTest {
 
     @Mock private VehicleEventRepository vehicleEventRepository;
     @Mock private VehicleRepository vehicleRepository;
+    @Mock private AuthorizationHelper authorizationHelper;
 
     @InjectMocks private VehicleEventService vehicleEventService;
 
@@ -103,6 +105,8 @@ class VehicleEventServiceTest {
     void create_usuarioNaoEDono_lancaForbidden() {
         VehicleEventRequestDTO dto = buildRequest();
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
 
         assertThatThrownBy(() -> vehicleEventService.create(otherUser, dto))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -143,6 +147,8 @@ class VehicleEventServiceTest {
     void getById_usuarioNaoEDono_lancaForbidden() {
         VehicleEvent event = buildEvent(5L);
         when(vehicleEventRepository.findById(5L)).thenReturn(Optional.of(event));
+        doThrow(new ForbiddenOperationException("Evento não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsEvent(otherUser, event);
 
         assertThatThrownBy(() -> vehicleEventService.getById(otherUser, 5L))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -173,6 +179,8 @@ class VehicleEventServiceTest {
     void update_usuarioNaoEDono_lancaForbidden() {
         VehicleEvent event = buildEvent(5L);
         when(vehicleEventRepository.findById(5L)).thenReturn(Optional.of(event));
+        doThrow(new ForbiddenOperationException("Evento não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsEvent(otherUser, event);
 
         assertThatThrownBy(() -> vehicleEventService.update(otherUser, 5L, buildRequest()))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -210,6 +218,8 @@ class VehicleEventServiceTest {
     void delete_usuarioNaoEDono_lancaForbidden() {
         VehicleEvent event = buildEvent(5L);
         when(vehicleEventRepository.findById(5L)).thenReturn(Optional.of(event));
+        doThrow(new ForbiddenOperationException("Evento não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsEvent(otherUser, event);
 
         assertThatThrownBy(() -> vehicleEventService.delete(otherUser, 5L))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -306,6 +316,8 @@ class VehicleEventServiceTest {
     void getVehicleEvents_usuarioNaoEDono_lancaForbidden() {
         Pageable pageable = PageRequest.of(0, 10);
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
 
         assertThatThrownBy(() -> vehicleEventService.getVehicleEvents(
                 otherUser, 10L, null, null, null, pageable))
