@@ -194,17 +194,6 @@ public class UserService {
         return new UploadResponse(internalUrl, signedUrl);
     }
 
-    // Backwards-compatible overload used by existing tests and callers
-    public String uploadProfilePicture(Long userId, MultipartFile file, boolean legacy) {
-        uploadProfilePictureResponse(userId, file);
-        return "Foto atualizada com sucesso";
-    }
-
-    // Keep original signature for tests (convenience)
-    public String uploadProfilePicture(Long userId, MultipartFile file) {
-        return uploadProfilePicture(userId, file, true);
-    }
-
     public void deleteUser(Long userId) {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("Usuário", userId);
