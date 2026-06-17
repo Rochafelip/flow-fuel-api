@@ -73,6 +73,14 @@ Aplicação Spring Boot para gerenciamento de combustível: cadastro/login de us
 
 Pré-requisitos: JDK 21 e Maven.
 
+A aplicação exige a variável de ambiente `JWT_SECRET` (mínimo 32 caracteres)
+em **todos os perfis, incluindo `dev`** — sem ela, a inicialização falha.
+Gere um valor local com:
+
+```bash
+export JWT_SECRET=$(openssl rand -base64 32)
+```
+
 ```bash
 # Build
 mvn clean package -DskipTests
