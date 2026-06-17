@@ -4,7 +4,7 @@ phase: 3
 priority: medium
 complexity: medium
 estimate: 2-3d
-status: pending
+status: done
 depends_on: []
 ---
 
@@ -107,11 +107,11 @@ Isso:
 
 ## Checklist
 
-- [ ] Analisar código atual
-- [ ] Criar testes de baseline para `S3StorageService` (antes da migração)
-- [ ] Implementar solução (migração para `S3Presigner` SDK v2)
-- [ ] Remover dependência do SDK v1
-- [ ] Adicionar/atualizar testes
+- [x] Analisar código atual
+- [x] Criar testes de baseline para `S3StorageService` (antes da migração)
+- [x] Implementar solução (migração para `S3Presigner` SDK v2)
+- [x] Remover dependência do SDK v1
+- [x] Adicionar/atualizar testes
 - [ ] Atualizar documentação
-- [ ] Executar testes de regressão
+- [x] Executar testes de regressão
 - [ ] Abrir PR
