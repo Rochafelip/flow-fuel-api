@@ -35,12 +35,6 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
 
     Optional<Refuel> findTopByVehicleIdOrderByRefuelDateDesc(Long vehicleId);
 
-    @Query("SELECT r FROM Refuel r WHERE r.vehicle.id = :vehicleId AND r.odometer BETWEEN :startOdometer AND :endOdometer ORDER BY r.odometer DESC")
-    List<Refuel> findByVehicleIdAndOdometerBetween(
-            @Param("vehicleId") Long vehicleId,
-            @Param("startOdometer") Integer startOdometer,
-            @Param("endOdometer") Integer endOdometer);
-
     @Query("SELECT SUM(r.totalAmount) FROM Refuel r WHERE r.vehicle.id = :vehicleId")
     Optional<BigDecimal> getTotalSpentByVehicleId(@Param("vehicleId") Long vehicleId);
 
