@@ -71,36 +71,37 @@ class S3StorageServiceTest {
     }
 
     @Test
-    void getUrl_withLegacyClient_returnsPresignedUrl() throws Exception {
-        com.amazonaws.services.s3.AmazonS3 legacyClient = mock(com.amazonaws.services.s3.AmazonS3.class);
-        ReflectionTestUtils.setField(service, "legacyS3Client", legacyClient);
-        java.net.URL presigned = new java.net.URL("https://s3.test-endpoint.com/test-bucket/users/1/photo.png?X-Amz-Signature=abc");
-        when(legacyClient.generatePresignedUrl(any(com.amazonaws.services.s3.model.GeneratePresignedUrlRequest.class)))
+    void getUrl_returnsPresignedUrlFromPresigner() throws Exception {
+        software.amazon.awssdk.services.s3.presigner.S3Presigner presigner =
+                mock(software.amazon.awssdk.services.s3.presigner.S3Presigner.class);
+        ReflectionTestUtils.setField(service, "presigner", presigner);
+
+        software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest presigned =
+                mock(software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest.class);
+        java.net.URL url = new java.net.URL("https://s3.test-endpoint.com/test-bucket/users/1/photo.png?X-Amz-Signature=abc");
+        when(presigned.url()).thenReturn(url);
+        when(presigner.presignGetObject(
+                any(software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest.class)))
                 .thenReturn(presigned);
 
-        String url = service.getUrl("users/1/photo.png");
+        String result = service.getUrl("users/1/photo.png");
 
-        assertThat(url).isEqualTo(presigned.toString());
+        assertThat(result).isEqualTo(url.toString());
     }
 
     @Test
-    void getUrl_whenLegacyClientThrows_fallsBackToEndpointUrl() {
-        com.amazonaws.services.s3.AmazonS3 legacyClient = mock(com.amazonaws.services.s3.AmazonS3.class);
-        ReflectionTestUtils.setField(service, "legacyS3Client", legacyClient);
-        when(legacyClient.generatePresignedUrl(any(com.amazonaws.services.s3.model.GeneratePresignedUrlRequest.class)))
-                .thenThrow(new RuntimeException("boom"));
+    void getUrl_whenPresignerThrows_propagatesException() {
+        software.amazon.awssdk.services.s3.presigner.S3Presigner presigner =
+                mock(software.amazon.awssdk.services.s3.presigner.S3Presigner.class);
+        ReflectionTestUtils.setField(service, "presigner", presigner);
+        when(presigner.presignGetObject(
+                any(software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest.class)))
+                .thenThrow((software.amazon.awssdk.core.exception.SdkClientException)
+                        software.amazon.awssdk.core.exception.SdkClientException.builder()
+                                .message("invalid config").build());
 
-        String url = service.getUrl("users/1/photo.png");
-
-        assertThat(url).isEqualTo("https://s3.test-endpoint.com/test-bucket/users/1/photo.png");
-    }
-
-    @Test
-    void getUrl_withoutLegacyClient_returnsEndpointUrl() {
-        ReflectionTestUtils.setField(service, "legacyS3Client", null);
-
-        String url = service.getUrl("users/1/photo.png");
-
-        assertThat(url).isEqualTo("https://s3.test-endpoint.com/test-bucket/users/1/photo.png");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.getUrl("users/1/photo.png"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Falha ao gerar URL pre-assinada");
     }
 }
