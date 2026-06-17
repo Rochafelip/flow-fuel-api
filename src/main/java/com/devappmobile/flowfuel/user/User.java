@@ -12,6 +12,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity(name = "User")
@@ -53,8 +54,8 @@ public class User {
     private LocalDateTime updatedAt;
 
     @JsonIgnore
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
-    private List<Vehicle> vehicles;
+    @OneToMany(mappedBy = "user")
+    private List<Vehicle> vehicles = new ArrayList<>();
 
     public User(String email, String password, String name) {
         this.email = email;
