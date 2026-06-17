@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.vehicle;
 
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
@@ -32,6 +33,7 @@ class VehicleServiceTest {
 
     @Mock private VehicleRepository vehicleRepository;
     @Mock private UserRepository userRepository;
+    @Mock private AuthorizationHelper authorizationHelper;
 
     @InjectMocks private VehicleService vehicleService;
 
@@ -127,6 +129,8 @@ class VehicleServiceTest {
     @Test
     void getVehicleById_usuarioNaoEDono_lancaForbidden() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
 
         assertThatThrownBy(() -> vehicleService.getVehicleById(otherUser, 10L))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -195,6 +199,8 @@ class VehicleServiceTest {
     @Test
     void deleteVehicle_usuarioNaoEDono_lancaForbiddenSemDeletar() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
 
         assertThatThrownBy(() -> vehicleService.deleteVehicle(otherUser, 10L))
                 .isInstanceOf(ForbiddenOperationException.class);

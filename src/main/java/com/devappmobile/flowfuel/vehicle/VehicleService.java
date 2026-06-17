@@ -1,8 +1,8 @@
 package com.devappmobile.flowfuel.vehicle;
 
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
-import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.user.UserRepository;
@@ -20,6 +20,7 @@ public class VehicleService {
 
     private final VehicleRepository vehicleRepository;
     private final UserRepository userRepository;
+    private final AuthorizationHelper authorizationHelper;
 
     public VehicleResponseDTO createVehicle(User user, VehicleRequestDTO request) {
         Vehicle vehicle = new Vehicle();
@@ -87,9 +88,7 @@ public class VehicleService {
     private Vehicle findOwned(User user, Long id) {
         Vehicle vehicle = vehicleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", id));
-        if (!vehicle.getUser().getId().equals(user.getId())) {
-            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsVehicle(user, vehicle);
         return vehicle;
     }
 
