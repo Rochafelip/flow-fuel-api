@@ -31,8 +31,6 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
     Optional<Refuel> findTopByVehicleIdAndOdometerLessThanOrderByOdometerDesc(
             Long vehicleId, Integer odometer);
 
-    boolean existsById(Long id);
-
     List<Refuel> findByVehicleIdAndFullTankTrueOrderByRefuelDateDesc(Long vehicleId);
 
     Optional<Refuel> findTopByVehicleIdOrderByRefuelDateDesc(Long vehicleId);
