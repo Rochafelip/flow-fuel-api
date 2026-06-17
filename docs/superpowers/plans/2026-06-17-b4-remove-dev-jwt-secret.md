@@ -26,7 +26,7 @@ No production Java code changes are needed: `JwtProdValidator` and Spring's own 
 **Files:**
 - Create: `src/test/java/com/devappmobile/flowfuel/config/JwtSecretConfigTest.java`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package com.devappmobile.flowfuel.config;
@@ -69,12 +69,12 @@ class JwtSecretConfigTest {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `mvn test -Dtest=JwtSecretConfigTest -pl .`
 Expected: FAIL — `value` is `${JWT_SECRET:flowfuel-dev-only-secret-change-in-production-32chars}`, not `${JWT_SECRET}`.
 
-- [ ] **Step 3: Commit the failing test**
+- [x] **Step 3: Commit the failing test**
 
 ```bash
 git add src/test/java/com/devappmobile/flowfuel/config/JwtSecretConfigTest.java
@@ -88,7 +88,7 @@ git commit -m "test(config): add regression test against hardcoded JWT dev secre
 **Files:**
 - Modify: `src/main/resources/application.properties:23-25`
 
-- [ ] **Step 1: Edit the property**
+- [x] **Step 1: Edit the property**
 
 Change:
 
@@ -108,17 +108,17 @@ to:
 jwt.secret=${JWT_SECRET}
 ```
 
-- [ ] **Step 2: Run the regression test to verify it passes**
+- [x] **Step 2: Run the regression test to verify it passes**
 
 Run: `mvn test -Dtest=JwtSecretConfigTest -pl .`
 Expected: PASS
 
-- [ ] **Step 3: Run the full test suite to confirm nothing else depended on the removed default**
+- [x] **Step 3: Run the full test suite to confirm nothing else depended on the removed default**
 
 Run: `mvn test`
 Expected: All tests PASS (the test profile in `src/test/resources/application.properties:7` already provides its own `jwt.secret`, so it is unaffected).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/main/resources/application.properties
@@ -132,7 +132,7 @@ git commit -m "fix(config): remove hardcoded dev JWT secret default"
 **Files:**
 - Modify: `.env.example`
 
-- [ ] **Step 1: Add the `JWT_SECRET` entry**
+- [x] **Step 1: Add the `JWT_SECRET` entry**
 
 Current file:
 
@@ -165,7 +165,7 @@ B2_S3_SECRET=<sua-application-key>
 B2_BUCKET_NAME=<nome-do-bucket>
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .env.example
@@ -179,7 +179,7 @@ git commit -m "docs: document required JWT_SECRET in .env.example"
 **Files:**
 - Modify: `README.md:72-84` (seção "Como rodar")
 
-- [ ] **Step 1: Edit the section**
+- [x] **Step 1: Edit the section**
 
 Current:
 
@@ -225,7 +225,7 @@ mvn spring-boot:run
 ```
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add README.md
@@ -238,7 +238,7 @@ git commit -m "docs: explain required JWT_SECRET setup for local dev"
 
 **Files:** none (manual run only)
 
-- [ ] **Step 1: Verify the app fails to start in dev without `JWT_SECRET`**
+- [x] **Step 1: Verify the app fails to start in dev without `JWT_SECRET`**
 
 Run:
 
@@ -249,7 +249,7 @@ mvn spring-boot:run
 
 Expected: Startup fails with a Spring `IllegalArgumentException`/`PlaceholderResolutionException`-style error mentioning the unresolved `${JWT_SECRET}` placeholder. Stop the process (Ctrl+C).
 
-- [ ] **Step 2: Verify the app starts normally in dev with `JWT_SECRET` set**
+- [x] **Step 2: Verify the app starts normally in dev with `JWT_SECRET` set**
 
 Run:
 
@@ -260,7 +260,7 @@ mvn spring-boot:run
 
 Expected: Application starts normally on port 8090 (or `$PORT`). Stop the process (Ctrl+C) once confirmed.
 
-- [ ] **Step 3: Run the full test suite one more time**
+- [x] **Step 3: Run the full test suite one more time**
 
 Run: `mvn test`
 Expected: All tests PASS, with no manual env var configuration needed (test profile supplies its own secret).
@@ -271,3 +271,4 @@ Expected: All tests PASS, with no manual env var configuration needed (test prof
 
 - **Spec coverage:** every requirement and acceptance criterion in `docs/roadmap/phase-4/B4-remove-dev-jwt-secret.md` maps to a task above — default removed (Task 2), test profile unaffected (verified Task 2 Step 3 / Task 5 Step 3), docs updated (Tasks 3–4), production behavior (`JwtProdValidator`) untouched (no changes to prod files or validator), manual dev fail-fast/success verification (Task 5).
 - **Chosen option:** the roadmap doc's "Option A" (require `JWT_SECRET` explicitly via env var) was chosen over "Option B" (invalid placeholder) because `staging`/`prod` already use the no-fallback pattern successfully — `dev` matching that pattern keeps all profiles consistent and avoids inventing new validation logic.
+- **Implementation deviation:** Task 1's test originally read `application.properties` via `getClass().getClassLoader().getResourceAsStream(...)`. Surefire puts `target/test-classes` ahead of `target/classes` on the test classpath, so this always resolved `src/test/resources/application.properties` (which defines its own `jwt.secret`) instead of main's resource — the test could never go green this way. Fixed by reading `src/main/resources/application.properties` directly via `Files.readString(Path.of(...))`, relative to the Maven module root (Surefire's working directory). Verified RED before Task 2's fix and GREEN after.
