@@ -69,4 +69,38 @@ class S3StorageServiceTest {
         assertThat(result.data()).isEqualTo(content);
         assertThat(result.contentType()).isEqualTo("image/png");
     }
+
+    @Test
+    void getUrl_withLegacyClient_returnsPresignedUrl() throws Exception {
+        com.amazonaws.services.s3.AmazonS3 legacyClient = mock(com.amazonaws.services.s3.AmazonS3.class);
+        ReflectionTestUtils.setField(service, "legacyS3Client", legacyClient);
+        java.net.URL presigned = new java.net.URL("https://s3.test-endpoint.com/test-bucket/users/1/photo.png?X-Amz-Signature=abc");
+        when(legacyClient.generatePresignedUrl(any(com.amazonaws.services.s3.model.GeneratePresignedUrlRequest.class)))
+                .thenReturn(presigned);
+
+        String url = service.getUrl("users/1/photo.png");
+
+        assertThat(url).isEqualTo(presigned.toString());
+    }
+
+    @Test
+    void getUrl_whenLegacyClientThrows_fallsBackToEndpointUrl() {
+        com.amazonaws.services.s3.AmazonS3 legacyClient = mock(com.amazonaws.services.s3.AmazonS3.class);
+        ReflectionTestUtils.setField(service, "legacyS3Client", legacyClient);
+        when(legacyClient.generatePresignedUrl(any(com.amazonaws.services.s3.model.GeneratePresignedUrlRequest.class)))
+                .thenThrow(new RuntimeException("boom"));
+
+        String url = service.getUrl("users/1/photo.png");
+
+        assertThat(url).isEqualTo("https://s3.test-endpoint.com/test-bucket/users/1/photo.png");
+    }
+
+    @Test
+    void getUrl_withoutLegacyClient_returnsEndpointUrl() {
+        ReflectionTestUtils.setField(service, "legacyS3Client", null);
+
+        String url = service.getUrl("users/1/photo.png");
+
+        assertThat(url).isEqualTo("https://s3.test-endpoint.com/test-bucket/users/1/photo.png");
+    }
 }
