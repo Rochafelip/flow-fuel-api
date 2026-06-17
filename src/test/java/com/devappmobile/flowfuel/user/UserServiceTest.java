@@ -179,7 +179,7 @@ class UserServiceTest {
     void upload_comTipoInvalido_lancaBusinessRule() {
         MockMultipartFile file = new MockMultipartFile("file", "foto.gif", "image/gif", new byte[100]);
 
-        assertThatThrownBy(() -> userService.uploadProfilePicture(1L, file))
+        assertThatThrownBy(() -> userService.uploadProfilePictureResponse(1L, file))
                 .isInstanceOf(BusinessRuleException.class);
         verify(userRepository, never()).save(any());
     }
@@ -189,7 +189,7 @@ class UserServiceTest {
         byte[] bigFile = new byte[6 * 1024 * 1024];
         MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", bigFile);
 
-        assertThatThrownBy(() -> userService.uploadProfilePicture(1L, file))
+        assertThatThrownBy(() -> userService.uploadProfilePictureResponse(1L, file))
                 .isInstanceOf(BusinessRuleException.class);
         verify(userRepository, never()).save(any());
     }
@@ -200,9 +200,9 @@ class UserServiceTest {
         when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
         when(userRepository.save(any())).thenReturn(existingUser);
 
-        String response = userService.uploadProfilePicture(1L, file);
+        UploadResponse response = userService.uploadProfilePictureResponse(1L, file);
 
-        assertThat(response).isEqualTo("Foto atualizada com sucesso");
+        assertThat(response).isNotNull();
         assertThat(existingUser.getProfilePicture()).isEqualTo("profile_pictures/1_foto.jpg");
     }
 
