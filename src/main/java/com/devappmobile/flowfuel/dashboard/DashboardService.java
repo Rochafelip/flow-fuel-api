@@ -1,6 +1,6 @@
 package com.devappmobile.flowfuel.dashboard;
 
-import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
@@ -24,13 +24,12 @@ public class DashboardService {
 
     private final RefuelRepository refuelRepository;
     private final VehicleRepository vehicleRepository;
+    private final AuthorizationHelper authorizationHelper;
 
     public DashboardDTO getVehicleDashboard(User user, Long vehicleId) {
         Vehicle vehicle = vehicleRepository.findById(vehicleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
-        if (!vehicle.getUser().getId().equals(user.getId())) {
-            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsVehicle(user, vehicle);
         return buildDashboard(vehicle);
     }
 

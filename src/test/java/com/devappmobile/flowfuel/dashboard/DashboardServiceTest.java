@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.dashboard;
 
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.refuel.Refuel;
@@ -23,6 +24,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,6 +32,7 @@ class DashboardServiceTest {
 
     @Mock private RefuelRepository refuelRepository;
     @Mock private VehicleRepository vehicleRepository;
+    @Mock private AuthorizationHelper authorizationHelper;
 
     @InjectMocks private DashboardService dashboardService;
 
@@ -62,6 +65,8 @@ class DashboardServiceTest {
     @Test
     void getVehicleDashboard_usuarioNaoEDono_lancaForbidden() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
 
         assertThatThrownBy(() -> dashboardService.getVehicleDashboard(otherUser, 10L))
                 .isInstanceOf(ForbiddenOperationException.class);
