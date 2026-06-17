@@ -4,7 +4,7 @@ phase: 3
 priority: medium
 complexity: medium-high
 estimate: 3-4d
-status: pending
+status: done
 depends_on: []
 ---
 
@@ -119,9 +119,9 @@ Nenhuma tecnicamente, mas **deve preceder [[M2-split-user-service]]** — `UserS
 
 ## Checklist
 
-- [ ] Analisar código atual
-- [ ] Implementar solução
-- [ ] Adicionar testes
-- [ ] Atualizar documentação
-- [ ] Executar testes de regressão
+- [x] Analisar código atual
+- [x] Implementar solução
+- [x] Adicionar testes
+- [x] Atualizar documentação
+- [x] Executar testes de regressão
 - [ ] Abrir PR
