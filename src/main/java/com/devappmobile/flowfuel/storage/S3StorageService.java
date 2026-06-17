@@ -1,6 +1,8 @@
 package com.devappmobile.flowfuel.storage;
 
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -9,25 +11,20 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Presigner;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import com.amazonaws.HttpMethod;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
-import java.util.Date;
-import java.time.Instant;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import java.time.Duration;
-
 import java.net.URI;
 
 @Service
 public class S3StorageService implements StorageService {
 
+    private static final Logger log = LoggerFactory.getLogger(S3StorageService.class);
+
     private S3Client s3;
-    private AmazonS3 legacyS3Client;
+    private S3Presigner presigner;
 
     @Value("${B2_S3_ENDPOINT:}")
     private String endpoint;
@@ -47,38 +44,27 @@ public class S3StorageService implements StorageService {
     @PostConstruct
     public void init() {
         var builder = S3Client.builder();
+        var presignerBuilder = S3Presigner.builder();
 
         if (accessKey != null && !accessKey.isBlank() && secretKey != null && !secretKey.isBlank()) {
-            builder.credentialsProvider(StaticCredentialsProvider.create(
-                    AwsBasicCredentials.create(accessKey, secretKey)));
+            var credentialsProvider = StaticCredentialsProvider.create(
+                    AwsBasicCredentials.create(accessKey, secretKey));
+            builder.credentialsProvider(credentialsProvider);
+            presignerBuilder.credentialsProvider(credentialsProvider);
         }
 
         if (region != null && !region.isBlank()) {
             builder.region(Region.of(region));
+            presignerBuilder.region(Region.of(region));
         }
 
         if (endpoint != null && !endpoint.isBlank()) {
             builder.endpointOverride(URI.create(endpoint));
+            presignerBuilder.endpointOverride(URI.create(endpoint));
         }
 
         s3 = builder.build();
-
-        // initialize legacy AWS SDK v1 client for presigned URLs
-        if (accessKey != null && !accessKey.isBlank() && secretKey != null && !secretKey.isBlank()) {
-            BasicAWSCredentials creds = new BasicAWSCredentials(accessKey, secretKey);
-            AmazonS3ClientBuilder builderV1 = AmazonS3ClientBuilder.standard()
-                    .withCredentials(new AWSStaticCredentialsProvider(creds));
-
-            if (region != null && !region.isBlank()) {
-                builderV1.withRegion(region);
-            }
-
-            if (endpoint != null && !endpoint.isBlank()) {
-                builderV1.withEndpointConfiguration(new com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration(endpoint, region));
-            }
-
-            legacyS3Client = builderV1.build();
-        }
+        presigner = presignerBuilder.build();
     }
 
     @Override
@@ -105,24 +91,18 @@ public class S3StorageService implements StorageService {
 
     @Override
     public String getUrl(String key) {
-        // If we have a legacy client, generate a presigned URL (valid 15 minutes)
-        if (legacyS3Client != null) {
-            try {
-                Instant exp = Instant.now().plus(Duration.ofMinutes(15));
-                Date expiration = Date.from(exp);
-                GeneratePresignedUrlRequest presignedRequest = new GeneratePresignedUrlRequest(bucket, key)
-                        .withMethod(HttpMethod.GET)
-                        .withExpiration(expiration);
-                return legacyS3Client.generatePresignedUrl(presignedRequest).toString();
-            } catch (Exception e) {
-                // fallthrough to public URL
-            }
-        }
+        try {
+            GetObjectRequest getRequest = GetObjectRequest.builder().bucket(bucket).key(key).build();
+            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                    .signatureDuration(Duration.ofMinutes(15))
+                    .getObjectRequest(getRequest)
+                    .build();
 
-        if (endpoint != null && !endpoint.isBlank()) {
-            return endpoint.replaceAll("/$", "") + "/" + bucket + "/" + key;
+            return presigner.presignGetObject(presignRequest).url().toString();
+        } catch (Exception e) {
+            log.error("Falha ao gerar URL pre-assinada para key={}", key, e);
+            throw new RuntimeException("Falha ao gerar URL pre-assinada", e);
         }
-        return String.format("https://%s.s3.%s.amazonaws.com/%s", bucket, region, key);
     }
 
     @Override
