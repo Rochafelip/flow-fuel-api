@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.refuel;
 
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
@@ -33,6 +34,7 @@ class RefuelServiceTest {
 
     @Mock private RefuelRepository refuelRepository;
     @Mock private VehicleRepository vehicleRepository;
+    @Mock private AuthorizationHelper authorizationHelper;
 
     @InjectMocks private RefuelService refuelService;
 
@@ -148,6 +150,8 @@ class RefuelServiceTest {
         RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
 
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
 
         assertThatThrownBy(() -> refuelService.createRefuel(otherUser, dto))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -279,6 +283,8 @@ class RefuelServiceTest {
         refuel.setVehicle(vehicle);
 
         when(refuelRepository.findById(1L)).thenReturn(Optional.of(refuel));
+        doThrow(new ForbiddenOperationException("Abastecimento não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsRefuel(otherUser, refuel);
 
         assertThatThrownBy(() -> refuelService.getRefuelById(otherUser, 1L))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -306,6 +312,8 @@ class RefuelServiceTest {
         refuel.setVehicle(vehicle);
 
         when(refuelRepository.findById(1L)).thenReturn(Optional.of(refuel));
+        doThrow(new ForbiddenOperationException("Abastecimento não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsRefuel(otherUser, refuel);
 
         assertThatThrownBy(() -> refuelService.deleteRefuel(otherUser, 1L))
                 .isInstanceOf(ForbiddenOperationException.class);

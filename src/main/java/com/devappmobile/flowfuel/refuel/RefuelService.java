@@ -1,8 +1,8 @@
 package com.devappmobile.flowfuel.refuel;
 
+import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
-import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
@@ -21,14 +21,13 @@ public class RefuelService {
 
     private final RefuelRepository refuelRepository;
     private final VehicleRepository vehicleRepository;
+    private final AuthorizationHelper authorizationHelper;
 
     public RefuelResponseDTO createRefuel(User user, RefuelRequestDTO request) {
         Vehicle vehicle = vehicleRepository.findById(request.getVehicleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", request.getVehicleId()));
 
-        if (!ownsVehicle(user, vehicle)) {
-            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsVehicle(user, vehicle);
 
         Integer lastOdometer = refuelRepository
                 .findTopByVehicleIdOrderByOdometerDesc(vehicle.getId())
@@ -70,9 +69,7 @@ public class RefuelService {
             LocalDate startDate, LocalDate endDate, Pageable pageable) {
         Vehicle vehicle = vehicleRepository.findById(vehicleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
-        if (!ownsVehicle(user, vehicle)) {
-            throw new ForbiddenOperationException("Veículo não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsVehicle(user, vehicle);
 
         Page<Refuel> page;
         if (startDate != null && endDate != null) {
@@ -88,18 +85,14 @@ public class RefuelService {
     public RefuelResponseDTO getRefuelById(User user, Long id) {
         Refuel refuel = refuelRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Abastecimento", id));
-        if (!ownsRefuel(user, refuel)) {
-            throw new ForbiddenOperationException("Abastecimento não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsRefuel(user, refuel);
         return RefuelResponseDTO.from(refuel);
     }
 
     public RefuelResponseDTO updateRefuel(User user, Long id, RefuelRequestDTO request) {
         Refuel refuel = refuelRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Abastecimento", id));
-        if (!ownsRefuel(user, refuel)) {
-            throw new ForbiddenOperationException("Abastecimento não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsRefuel(user, refuel);
 
         Vehicle vehicle = refuel.getVehicle();
 
@@ -140,18 +133,8 @@ public class RefuelService {
     public void deleteRefuel(User user, Long id) {
         Refuel refuel = refuelRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Abastecimento", id));
-        if (!ownsRefuel(user, refuel)) {
-            throw new ForbiddenOperationException("Abastecimento não pertence ao usuário");
-        }
+        authorizationHelper.ensureOwnsRefuel(user, refuel);
         refuelRepository.deleteById(id);
-    }
-
-    private boolean ownsVehicle(User user, Vehicle vehicle) {
-        return vehicle.getUser().getId().equals(user.getId());
-    }
-
-    private boolean ownsRefuel(User user, Refuel refuel) {
-        return ownsVehicle(user, refuel.getVehicle());
     }
 
     private BigDecimal[] priceRangeFor(RefuelType refuelType) {
