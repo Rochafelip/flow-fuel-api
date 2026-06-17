@@ -3,7 +3,6 @@ package com.devappmobile.flowfuel.config;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.common.error.ProblemDetailWriter;
 import com.devappmobile.flowfuel.user.UserRepository;
-import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -69,36 +68,35 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String token = authHeader.substring(7).trim();
-        try {
-            String email = jwtUtil.extractEmail(token);
+        var claimsOpt = jwtUtil.tryParse(token);
 
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                if (jwtUtil.validateToken(token)) {
-                    userRepository.findByEmail(email).ifPresent(user -> {
-                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                                user, null,
-                                Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")));
-                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(authToken);
-                        if (user.getId() != null) {
-                            MDC.put(MDC_USER_ID, user.getId().toString());
-                        }
-                    });
-                }
-            }
-
-            try {
-                filterChain.doFilter(request, response);
-            } finally {
-                MDC.remove(MDC_USER_ID);
-            }
-        } catch (JwtException | IllegalArgumentException ex) {
-            log.warn("Token JWT invalido code={} method={} path={} reason={}",
-                    ErrorCode.AUTH_TOKEN_INVALID.code(), request.getMethod(),
-                    request.getRequestURI(), ex.getMessage());
+        if (claimsOpt.isEmpty()) {
+            log.warn("Token JWT invalido code={} method={} path={}",
+                    ErrorCode.AUTH_TOKEN_INVALID.code(), request.getMethod(), request.getRequestURI());
             ProblemDetailWriter.write(response, request.getRequestURI(),
                     ErrorCode.AUTH_TOKEN_INVALID,
-                    ex.getMessage() != null ? ex.getMessage() : "Token inválido");
+                    "Token inválido");
+            return;
+        }
+
+        String email = claimsOpt.get().getSubject();
+        if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            userRepository.findByEmail(email).ifPresent(user -> {
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        user, null,
+                        Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")));
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+                if (user.getId() != null) {
+                    MDC.put(MDC_USER_ID, user.getId().toString());
+                }
+            });
+        }
+
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            MDC.remove(MDC_USER_ID);
         }
     }
 }
