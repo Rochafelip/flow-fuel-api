@@ -7,6 +7,8 @@ import lombok.Setter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 
@@ -52,6 +54,7 @@ public class Refuel {
     @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "vehicle_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Vehicle vehicle;
 
     @PrePersist

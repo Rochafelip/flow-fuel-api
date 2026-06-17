@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -159,6 +160,38 @@ class VehicleControllerIntegrationTest {
         mockMvc.perform(delete("/api/v1/vehicles/{id}", vehicleId)
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void deleteVehicle_comReabastecimentosAssociados_removeReabastecimentos() throws Exception {
+        String token = obterToken("delcascade@test.com");
+        long vehicleId = criarVeiculo(token);
+        criarReabastecimento(token, vehicleId);
+        criarReabastecimento(token, vehicleId);
+
+        mockMvc.perform(delete("/api/v1/vehicles/{id}", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        assertThat(refuelRepository.findByVehicleIdOrderByRefuelDateDesc(vehicleId)).isEmpty();
+    }
+
+    private long criarReabastecimento(String token, long vehicleId) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/refuels")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "vehicleId": %d,
+                          "odometer": 50100,
+                          "energyAmount": 40.0,
+                          "pricePerUnit": 5.89,
+                          "fullTank": true
+                        }
+                        """.formatted(vehicleId)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }
 
     @Test

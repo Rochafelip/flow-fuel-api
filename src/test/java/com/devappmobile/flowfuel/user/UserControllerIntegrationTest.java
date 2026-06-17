@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.refuel.RefuelRepository;
+import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,10 +23,14 @@ class UserControllerIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
+    @Autowired private VehicleRepository vehicleRepository;
+    @Autowired private RefuelRepository refuelRepository;
     @Autowired private ObjectMapper objectMapper;
 
     @BeforeEach
     void limparBanco() {
+        refuelRepository.deleteAll();
+        vehicleRepository.deleteAll();
         userRepository.deleteAll();
     }
 
@@ -525,6 +531,39 @@ class UserControllerIntegrationTest {
                 .andExpect(status().isOk());
 
         assertThat(userRepository.existsById(userId)).isFalse();
+    }
+
+    @Test
+    void deleteUser_comVeiculosEReabastecimentosAssociados_removeTudo() throws Exception {
+        MvcResult registerResult = registrar("delcascade@test.com", "senha123");
+        long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("delcascade@test.com", "senha123");
+
+        MvcResult vehicleResult = mockMvc.perform(post("/api/v1/vehicles")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"type":"Carro","energyType":"COMBUSTION","currentKm":50000,"capacity":55}
+                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+        long vehicleId = objectMapper.readTree(vehicleResult.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(post("/api/v1/refuels")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"vehicleId": %d, "odometer": 50100, "energyAmount": 40.0, "pricePerUnit": 5.89, "fullTank": true}
+                        """.formatted(vehicleId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/v1/auth/{id}", userId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        assertThat(userRepository.existsById(userId)).isFalse();
+        assertThat(vehicleRepository.findByUserId(userId)).isEmpty();
+        assertThat(refuelRepository.findByVehicleIdOrderByRefuelDateDesc(vehicleId)).isEmpty();
     }
 
     // --- forgot / reset password ---

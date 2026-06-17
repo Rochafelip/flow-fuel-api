@@ -4,7 +4,7 @@ phase: 3
 priority: medium
 complexity: medium
 estimate: 1-2d
-status: pending
+status: done
 depends_on: []
 ---
 
@@ -89,11 +89,19 @@ Nenhuma dependência de outras tasks do roadmap. **Requer cobertura de teste de 
 
 ## Checklist
 
-- [ ] Analisar código atual
-- [ ] Mapear fluxos que dependem do cascade JPA em memória
-- [ ] Adicionar/confirmar testes de regressão de exclusão (antes da mudança)
-- [ ] Implementar solução
-- [ ] Adicionar testes
-- [ ] Atualizar documentação
-- [ ] Executar testes de regressão
+- [x] Analisar código atual
+- [x] Mapear fluxos que dependem do cascade JPA em memória
+- [x] Adicionar/confirmar testes de regressão de exclusão (antes da mudança)
+- [x] Implementar solução
+- [x] Adicionar testes
+- [x] Atualizar documentação
+- [x] Executar testes de regressão
 - [ ] Abrir PR
+
+## Notas de Implementação
+
+- Achado adicional não previsto no doc original: os testes (`src/test/resources/application.properties`) na verdade executam as migrations Flyway (Flyway habilitado por omissão nesse perfil), mas o `ddl-auto=create-drop` do Hibernate recria o schema por cima a partir das entidades — então o `ON DELETE CASCADE` das migrations não chega a valer no H2 de teste a menos que o mapeamento JPA também o declare.
+- Solução adotada: anotação `@OnDelete(action = OnDeleteAction.CASCADE)` do Hibernate (`org.hibernate.annotations.OnDelete`) no lado `@ManyToOne` de `Vehicle.user` e `Refuel.vehicle`. Isso faz o Hibernate gerar `ON DELETE CASCADE` também no DDL gerado para H2, mantendo paridade com o schema de produção (Flyway) sem exigir cascade JPA em memória.
+- `vehicleRepository.deleteById(id)` (`VehicleService.deleteVehicle`) e `userRepository.deleteById(userId)` (`UserService.deleteUser`) já não carregavam a entidade gerenciada — o cascade JPA nunca era acionado nesses fluxos; a remoção dependia apenas do `ON DELETE CASCADE` do banco, confirmando a análise do documento original.
+- Testes de regressão adicionados: `VehicleControllerIntegrationTest#deleteVehicle_comReabastecimentosAssociados_removeReabastecimentos` e `UserControllerIntegrationTest#deleteUser_comVeiculosEReabastecimentosAssociados_removeTudo`. Ambos foram verificados em RED (sem `@OnDelete`, falhavam com 409 por violação de FK) e depois em GREEN (com `@OnDelete`).
+- Suíte completa (`./mvnw test`) passa sem regressões.
