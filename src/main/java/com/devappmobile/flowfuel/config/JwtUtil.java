@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Optional;
 
 @Component
 public class JwtUtil {
@@ -35,26 +36,27 @@ public class JwtUtil {
                 .compact();
     }
 
+    public Optional<Claims> tryParse(String token) {
+        try {
+            return Optional.of(parseClaims(token));
+        } catch (JwtException | IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
     public String extractEmail(String token) {
-        return parseClaims(token).getSubject();
+        return tryParse(token).map(Claims::getSubject).orElse(null);
     }
 
     public boolean validateToken(String token) {
-        try {
-            parseClaims(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
-        }
+        return tryParse(token).isPresent();
     }
 
     public Long extractUserId(String token) {
-        try {
-            Object userId = parseClaims(token).get("userId");
-            return userId != null ? Long.valueOf(userId.toString()) : null;
-        } catch (JwtException | IllegalArgumentException e) {
-            return null;
-        }
+        return tryParse(token)
+                .map(claims -> claims.get("userId"))
+                .map(v -> Long.valueOf(v.toString()))
+                .orElse(null);
     }
 
     private Claims parseClaims(String token) {
