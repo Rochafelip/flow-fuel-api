@@ -129,12 +129,6 @@
 			<artifactId>s3</artifactId>
 			<version>2.20.110</version>
 		</dependency>
-		<!-- AWS SDK v1 for presigned URL generation (compatible with Backblaze) -->
-		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk-s3</artifactId>
-			<version>1.12.548</version>
-		</dependency>
 		<!-- Rate limiting (FLOW-009): token bucket por IP nos endpoints de autenticacao -->
 		<dependency>
 			<groupId>com.bucket4j</groupId>
