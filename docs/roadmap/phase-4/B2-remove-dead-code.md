@@ -4,7 +4,7 @@ phase: 4
 priority: low
 complexity: low
 estimate: 0.5d
-status: pending
+status: done
 depends_on: [M2]
 ---
 
@@ -84,9 +84,9 @@ Os seguintes métodos foram identificados como não utilizados (dead code):
 
 ## Checklist
 
-- [ ] Analisar código atual
-- [ ] Confirmar (grep) que métodos candidatos não são usados
-- [ ] Implementar solução (remoção)
-- [ ] Atualizar documentação
-- [ ] Executar testes de regressão
+- [x] Analisar código atual
+- [x] Confirmar (grep) que métodos candidatos não são usados
+- [x] Implementar solução (remoção)
+- [x] Atualizar documentação
+- [x] Executar testes de regressão
 - [ ] Abrir PR
