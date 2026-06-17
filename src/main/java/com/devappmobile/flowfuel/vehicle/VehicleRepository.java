@@ -20,6 +20,4 @@ public interface VehicleRepository extends JpaRepository<Vehicle, Long> {
                                          @Param("userId") Long userId);
     
     List<Vehicle> findByUserIdAndIsActiveTrue(Long userId);
-    
-    boolean existsById(Long id);
 }
