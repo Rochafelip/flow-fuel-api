@@ -9,6 +9,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -31,6 +32,7 @@ public class StoredFile {
     @Column(nullable = false)
     private byte[] data;
 
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -38,6 +40,5 @@ public class StoredFile {
         this.key = key;
         this.contentType = contentType;
         this.data = data;
-        this.createdAt = LocalDateTime.now();
     }
 }
