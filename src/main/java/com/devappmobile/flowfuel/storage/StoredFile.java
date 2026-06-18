@@ -3,7 +3,6 @@ package com.devappmobile.flowfuel.storage;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -28,8 +27,7 @@ public class StoredFile {
     @Column(name = "content_type", nullable = false)
     private String contentType;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100_000_000)
     private byte[] data;
 
     @CreationTimestamp
