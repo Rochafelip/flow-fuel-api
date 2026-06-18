@@ -4,7 +4,7 @@ phase: 4
 priority: low
 complexity: high
 estimate: 4-6d
-status: pending
+status: done
 depends_on: [M1, B6]
 ---
 
@@ -96,12 +96,12 @@ Esta é a **maior violação de SRP do projeto**, com alta probabilidade de conf
 
 ## Checklist
 
-- [ ] Confirmar conclusão de M1 e B6
-- [ ] Analisar código atual
-- [ ] Implementar solução (split em AuthService + UserProfileService)
-- [ ] Remover overloads legacy de uploadProfilePicture
-- [ ] Corrigir B3 (NPE addVehicle/removeVehicle) no mesmo PR
-- [ ] Adicionar/realocar testes
-- [ ] Atualizar documentação
-- [ ] Executar testes de regressão (UserControllerIntegrationTest completo)
+- [x] Confirmar conclusão de M1 e B6
+- [x] Analisar código atual
+- [x] Implementar solução (split em AuthService + UserProfileService)
+- [x] Remover overloads legacy de uploadProfilePicture (já não existiam no código atual)
+- [x] Corrigir B3 (NPE addVehicle/removeVehicle) — já estava corrigido antes deste PR
+- [x] Adicionar/realocar testes
+- [x] Atualizar documentação
+- [x] Executar testes de regressão (UserControllerIntegrationTest completo)
 - [ ] Abrir PR
