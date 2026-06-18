@@ -8,8 +8,6 @@ public interface StorageService {
 
     void delete(String key);
 
-    String getUrl(String key);
-
     record StorageObject(byte[] data, String contentType) {}
 
     StorageObject download(String key);
