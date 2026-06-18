@@ -55,15 +55,13 @@ class UserProfileServiceTest {
     }
 
     @Test
-    void getUserProfile_retornaProfilePictureUrl() {
+    void getUserProfile_retornaProfilePicturePath() {
         existingUser.setProfilePicture("profile_pictures/1_foto.jpg");
         when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-        when(storageService.getUrl("profile_pictures/1_foto.jpg")).thenReturn("https://signed-url.example.com/profile_pictures/1_foto.jpg");
 
         UserResponseDTO response = userProfileService.getUserProfile(1L);
 
         assertThat(response.getProfilePicture()).isEqualTo("/auth/1/profile-picture");
-        assertThat(response.getProfilePictureUrl()).isEqualTo("https://signed-url.example.com/profile_pictures/1_foto.jpg");
     }
 
     // --- uploadProfilePictureResponse ---
@@ -100,17 +98,15 @@ class UserProfileServiceTest {
     }
 
     @Test
-    void uploadProfilePictureResponse_comImagemValida_retornaUrls() {
+    void uploadProfilePictureResponse_comImagemValida_retornaInternalUrl() {
         MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
         when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
         when(userRepository.save(any())).thenReturn(existingUser);
-        when(storageService.getUrl("profile_pictures/1_foto.jpg")).thenReturn("https://signed-url.example.com/profile_pictures/1_foto.jpg");
 
         UploadResponse response = userProfileService.uploadProfilePictureResponse(1L, file);
 
         assertThat(response).isNotNull();
         assertThat(response.getInternalUrl()).isEqualTo("/auth/1/profile-picture");
-        assertThat(response.getSignedUrl()).isEqualTo("https://signed-url.example.com/profile_pictures/1_foto.jpg");
         assertThat(existingUser.getProfilePicture()).isEqualTo("profile_pictures/1_foto.jpg");
     }
 
