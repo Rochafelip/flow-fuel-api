@@ -11,5 +11,4 @@ import lombok.Setter;
 @AllArgsConstructor
 public class UploadResponse {
     private String internalUrl; // /auth/{userId}/profile-picture
-    private String signedUrl; // presigned S3 url (may be null if not available)
 }

@@ -25,17 +25,9 @@ public class UserProfileService {
         User user = findUserOrThrow(userId);
         String profileKey = user.getProfilePicture();
         String internalUrl = profileKey != null ? ("/auth/" + userId + "/profile-picture") : null;
-        String signedUrl = null;
-        if (profileKey != null) {
-            try {
-                signedUrl = storageService.getUrl(profileKey);
-            } catch (Exception ignored) {
-            }
-        }
 
         UserResponseDTO dto = UserResponseDTO.from(user);
         dto.setProfilePicture(internalUrl);
-        dto.setProfilePictureUrl(signedUrl);
         return dto;
     }
 
@@ -105,13 +97,7 @@ public class UserProfileService {
         userRepository.save(user);
 
         String internalUrl = "/auth/" + userId + "/profile-picture";
-        String signedUrl = null;
-        try {
-            signedUrl = storageService.getUrl(key);
-        } catch (Exception ignored) {
-        }
-
-        return new UploadResponse(internalUrl, signedUrl);
+        return new UploadResponse(internalUrl);
     }
 
     private User findUserOrThrow(Long userId) {
