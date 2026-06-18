@@ -123,11 +123,11 @@
 			<artifactId>sentry-logback</artifactId>
 			<version>7.18.1</version>
 		</dependency>
-		<!-- AWS S3 SDK (used with Backblaze S3-compatible endpoint) -->
+		<!-- Redimensionamento de imagens (foto de perfil), armazenadas no Postgres -->
 		<dependency>
-			<groupId>software.amazon.awssdk</groupId>
-			<artifactId>s3</artifactId>
-			<version>2.20.110</version>
+			<groupId>net.coobird</groupId>
+			<artifactId>thumbnailator</artifactId>
+			<version>0.4.20</version>
 		</dependency>
 		<!-- Rate limiting (FLOW-009): token bucket por IP nos endpoints de autenticacao -->
 		<dependency>
