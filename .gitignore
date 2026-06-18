@@ -38,7 +38,7 @@ build/
 # Orphan artifacts — projeto Maven, sem toolchain JS (ver FLOW-019)
 maven.zip
 package-lock.json
-
+/docs
 /Claude/*
 # Ambiente prod local (segredos)
 .env.prod
