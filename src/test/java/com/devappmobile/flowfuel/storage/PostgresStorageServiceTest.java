@@ -50,6 +50,15 @@ class PostgresStorageServiceTest {
     }
 
     @Test
+    void upload_comImagemCorrompida_lancaBusinessRule() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "foto.jpg", "image/jpeg", "isso nao e uma imagem".getBytes());
+
+        assertThatThrownBy(() -> service.upload(file, "users/1/photo.jpg"))
+                .isInstanceOf(com.devappmobile.flowfuel.exception.BusinessRuleException.class);
+    }
+
+    @Test
     void upload_comKeyExistente_sobrescreve() throws IOException {
         MockMultipartFile original = new MockMultipartFile(
                 "file", "foto.png", "image/png", pngOf(100, 100));
