@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -71,6 +72,7 @@ public class AuthService {
      * Troca a senha do usuario. Apos sucesso, revoga todas as sessoes ativas
      * (refresh tokens) — o usuario precisa logar novamente em todos os dispositivos.
      */
+    @Transactional
     public void changePassword(Long userId, String currentPassword, String newPassword) {
         User user = findUserOrThrow(userId);
 

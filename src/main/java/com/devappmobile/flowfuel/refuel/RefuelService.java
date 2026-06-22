@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -23,6 +24,7 @@ public class RefuelService {
     private final VehicleRepository vehicleRepository;
     private final AuthorizationHelper authorizationHelper;
 
+    @Transactional
     public RefuelResponseDTO createRefuel(User user, RefuelRequestDTO request) {
         Vehicle vehicle = vehicleRepository.findById(request.getVehicleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", request.getVehicleId()));
