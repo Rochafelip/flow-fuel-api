@@ -4,7 +4,7 @@ phase: 1
 priority: critical
 complexity: low
 estimate: 0.5d
-status: pending
+status: done
 depends_on: []
 ---
 

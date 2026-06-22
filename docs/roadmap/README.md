@@ -129,9 +129,9 @@ B4 ─────────────────────────�
 
 | # | ID | Task | Fase | Prioridade | Complexidade | Estimativa | Status | Depende de |
 |---|----|------|------|------------|---------------|------------|--------|------------|
-| 1 | A1 | [Transactional boundaries](phase-1/A1-transactional-boundaries.md) | 1 | critical | 🟢 Low | 0,5–1d | pending | — |
-| 2 | A2 | [Data integrity handler](phase-1/A2-data-integrity-handler.md) | 1 | critical | 🟢 Low | 0,5d | pending | — |
-| 3 | A3 | [Activation link validator](phase-1/A3-activation-link-validator.md) | 1 | critical | 🟢🟡 Low-Med | 0,5–1d | pending | — |
+| 1 | A1 | [Transactional boundaries](phase-1/A1-transactional-boundaries.md) | 1 | critical | 🟢 Low | 0,5–1d | done | — |
+| 2 | A2 | [Data integrity handler](phase-1/A2-data-integrity-handler.md) | 1 | critical | 🟢 Low | 0,5d | done | — |
+| 3 | A3 | [Activation link validator](phase-1/A3-activation-link-validator.md) | 1 | critical | 🟢🟡 Low-Med | 0,5–1d | done | — |
 | 4 | M8 | [UserUpdateDTO + @Valid](phase-2/M8-user-update-dto-validation.md) | 2 | high | 🟢🟡 Low-Med | 1d | pending | A2 |
 | 5 | B5 | [LoginRequest record](phase-2/B5-login-request-record.md) | 2 | high | 🟢 Low | 0,5d | pending | — |
 | 6 | M4 | [Reconciliar consumo médio](phase-2/M4-reconcile-average-consumption-formula.md) | 2 | high | 🟢🟡 Low-Med | 1d | pending | — |
