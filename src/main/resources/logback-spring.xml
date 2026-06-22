@@ -6,6 +6,9 @@
          - prod: JSON estruturado via logstash-logback-encoder, com requestId/userId do MDC.
          O Sentry intercepta logs >= ERROR automaticamente (sentry-logback). -->
 
+    <!-- Lido antes do appender inicializar; default vazio desliga o SDK sem WARN. -->
+    <springProperty name="sentryDsn" source="sentry.dsn" defaultValue=""/>
+
     <springProfile name="dev,test,default">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
@@ -35,6 +38,9 @@
 
         <!-- Sentry: somente eventos ERROR sao reportados; WARN/INFO ficam so no log. -->
         <appender name="SENTRY" class="io.sentry.logback.SentryAppender">
+            <options>
+                <dsn>${sentryDsn}</dsn>
+            </options>
             <minimumEventLevel>ERROR</minimumEventLevel>
             <minimumBreadcrumbLevel>INFO</minimumBreadcrumbLevel>
         </appender>
