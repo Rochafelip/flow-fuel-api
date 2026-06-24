@@ -21,6 +21,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
     private final AccountActivationService accountActivationService;
+    private final TokenIssuer tokenIssuer;
 
     /**
      * Cadastra um novo usuario com status {@link UserStatus#PENDING_ACTIVATION} e
@@ -54,7 +55,7 @@ public class AuthService {
                     "Conta não ativada. Verifique seu email para ativar a conta.");
         }
 
-        return issueTokenPair(user);
+        return tokenIssuer.issueTokenPair(user);
     }
 
     public TokenPairResponse refresh(String refreshToken) {
@@ -93,13 +94,6 @@ public class AuthService {
             throw new ResourceNotFoundException("Usuário", userId);
         }
         userRepository.deleteById(userId);
-    }
-
-    private TokenPairResponse issueTokenPair(User user) {
-        String accessToken = jwtUtil.generateToken(user.getEmail(), user.getId());
-        String refreshToken = refreshTokenService.issue(user);
-        return new TokenPairResponse(accessToken, refreshToken,
-                jwtUtil.getAccessTokenTtlMs() / 1000);
     }
 
     private User findUserOrThrow(Long userId) {

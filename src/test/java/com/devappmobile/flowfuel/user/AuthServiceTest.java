@@ -30,6 +30,7 @@ class AuthServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
     @Mock private AccountActivationService accountActivationService;
+    @Mock private TokenIssuer tokenIssuer;
 
     @InjectMocks private AuthService authService;
 
@@ -105,18 +106,14 @@ class AuthServiceTest {
 
     @Test
     void login_comCredenciaisValidas_retornaTokenPair() {
+        TokenPairResponse expected = new TokenPairResponse("jwt-token-gerado", "refresh-plain", 900L);
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("senha123", "hashed_password")).thenReturn(true);
-        when(jwtUtil.generateToken("test@example.com", 1L)).thenReturn("jwt-token-gerado");
-        when(jwtUtil.getAccessTokenTtlMs()).thenReturn(900_000L);
-        when(refreshTokenService.issue(existingUser)).thenReturn("refresh-plain");
+        when(tokenIssuer.issueTokenPair(existingUser)).thenReturn(expected);
 
         TokenPairResponse response = authService.login("test@example.com", "senha123");
 
-        assertThat(response).isNotNull();
-        assertThat(response.accessToken()).isEqualTo("jwt-token-gerado");
-        assertThat(response.refreshToken()).isEqualTo("refresh-plain");
-        assertThat(response.expiresIn()).isEqualTo(900L);
+        assertThat(response).isEqualTo(expected);
     }
 
     @Test
@@ -146,7 +143,7 @@ class AuthServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.ACCOUNT_NOT_ACTIVATED));
-        verifyNoInteractions(refreshTokenService);
+        verifyNoInteractions(tokenIssuer);
     }
 
     // --- changePassword ---
