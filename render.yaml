@@ -82,7 +82,7 @@ services:
         sync: false
       # Remetente: precisa ser um Single Sender ou dominio verificado no SendGrid.
       - key: MAIL_FROM
-        value: no-reply@flowfuel.app
+        value: flowfuelapp@gmail.com
       # Base do link de ativacao (rota do frontend que consome o token).
       - key: ACCOUNT_ACTIVATION_LINK_BASE_URL
         sync: false
