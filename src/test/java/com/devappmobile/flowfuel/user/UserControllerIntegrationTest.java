@@ -118,7 +118,7 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void activate_comTokenValido_ativaContaEPermiteLogin() throws Exception {
+    void activate_comTokenValido_ativaContaERetornaTokenPair() throws Exception {
         registrarSemAtivar("ativar@test.com", "senha123");
         String token = solicitarReenvioAtivacao("ativar@test.com");
         assertThat(token).isNotBlank();
@@ -128,15 +128,10 @@ class UserControllerIntegrationTest {
                 .content("""
                         {"token":"%s"}
                         """.formatted(token)))
-                .andExpect(status().isNoContent());
-
-        // Apos ativar, o login passa a funcionar.
-        mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"email":"ativar@test.com","password":"senha123"}
-                        """))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.refreshToken").isNotEmpty())
+                .andExpect(jsonPath("$.expiresIn").isNumber());
     }
 
     @Test
@@ -159,7 +154,7 @@ class UserControllerIntegrationTest {
                 .content("""
                         {"token":"%s"}
                         """.formatted(token)))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
 
         // Token de uso unico: segunda tentativa falha.
         mockMvc.perform(post("/api/v1/auth/activate")
