@@ -22,6 +22,7 @@ public class AccountActivationService {
     private final UserRepository userRepository;
     private final ActivationTokenRepository tokenRepository;
     private final AccountActivationNotifier notifier;
+    private final TokenIssuer tokenIssuer;
 
     @Value("${flowfuel.account-activation.token-ttl-minutes:60}")
     private long tokenTtlMinutes;
@@ -43,7 +44,7 @@ public class AccountActivationService {
     }
 
     @Transactional
-    public void activate(String plaintext) {
+    public TokenPairResponse activate(String plaintext) {
         if (plaintext == null || plaintext.isBlank()) {
             throw new AppException(ErrorCode.AUTH_ACTIVATION_INVALID, "Token de ativação ausente");
         }
@@ -59,6 +60,8 @@ public class AccountActivationService {
 
         token.setUsedAt(LocalDateTime.now());
         log.info("Conta ativada via token userId={}", user.getId());
+
+        return tokenIssuer.issueTokenPair(user);
     }
 
     @Transactional
