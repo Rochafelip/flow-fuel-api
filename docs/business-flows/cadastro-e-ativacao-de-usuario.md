@@ -39,11 +39,12 @@ Permitir que um novo usuário crie uma conta no FlowFuel e a ative via token env
 2. Sistema calcula o hash SHA-256 e busca o token correspondente.
 3. Token deve estar "usável" (não usado e não expirado).
 4. Conta passa para `status = ACTIVE`; token é marcado como usado (`usedAt`).
+5. Sistema emite imediatamente um **par de tokens de sessão** (access + refresh) para o usuário recém-ativado, dispensando um login separado em seguida (auto-login via magic link).
 
 **Caminhos alternativos / exceções de negócio:**
 - Token ausente/vazio, inexistente, expirado ou já usado → erro `AUTH_ACTIVATION_INVALID` ("Token de ativação inválido ou expirado").
 
-**Pós-condições:** Usuário pode realizar login normalmente.
+**Pós-condições:** Usuário já está autenticado (recebeu `accessToken` e `refreshToken` na própria resposta de ativação) — não precisa chamar `/auth/login` depois.
 
 ## Fluxo: Reenvio de Ativação (`POST /auth/resend-activation`)
 
@@ -68,7 +69,8 @@ flowchart TD
     G --> H{Token usável?}
     H -- Não --> I[401/422 AUTH_ACTIVATION_INVALID]
     H -- Sim --> J[status = ACTIVE, token.usedAt = now]
-    J --> K[Usuário pode fazer login]
+    J --> K[Emite par accessToken + refreshToken na resposta]
+    K --> L[Usuário já autenticado - sem login separado]
 ```
 
 ## Pontos de Atenção

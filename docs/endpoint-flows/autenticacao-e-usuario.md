@@ -1,6 +1,6 @@
 # Fluxo de Endpoints — Autenticação e Usuário
 
-> Fonte: `user/UserController.java`, `user/AuthService.java`, `user/AccountActivationService.java`, `user/PasswordResetService.java`, `user/RefreshTokenService.java`, `user/UserProfileService.java`, `config/JwtAuthenticationFilter.java`, `config/SecurityConfig.java`, `config/RateLimitFilter.java`/`RateLimitingConfig.java`, `config/GlobalExceptionHandler.java`, `storage/S3StorageService.java`.
+> Fonte: `user/UserController.java`, `user/AuthService.java`, `user/AccountActivationService.java`, `user/TokenIssuer.java`, `user/PasswordResetService.java`, `user/RefreshTokenService.java`, `user/UserProfileService.java`, `config/JwtAuthenticationFilter.java`, `config/SecurityConfig.java`, `config/RateLimitFilter.java`/`RateLimitingConfig.java`, `config/GlobalExceptionHandler.java`, `storage/S3StorageService.java`.
 
 Controller: `UserController` está mapeado em `@RequestMapping("/auth")` (`UserController.java:16`) — **não** em `/api/v1/auth`. Ver `## Pontos de Atenção`.
 
@@ -25,7 +25,9 @@ Controller: `UserController` está mapeado em `@RequestMapping("/auth")` (`UserC
 
 ### `POST /auth/activate`
 
-`AccountActivationService.activate` (`:45-62`, `@Transactional`): token vazio → `AUTH_ACTIVATION_INVALID` 401. Busca `ActivationToken` por hash, exige `isUsable()` (não usado e não expirado) → senão mesmo erro 401. Sucesso: `User.status=ACTIVE`, marca `token.usedAt`. Retorna `204`. Não emite tokens de sessão (sem auto-login).
+`AccountActivationService.activate` (`AccountActivationService.java:46-65`, `@Transactional`): token vazio → `AUTH_ACTIVATION_INVALID` 401. Busca `ActivationToken` por hash, exige `isUsable()` (não usado e não expirado) → senão mesmo erro 401. Sucesso: `User.status=ACTIVE`, marca `token.usedAt`, e então chama `TokenIssuer.issueTokenPair(user)` — o mesmo componente usado por `/auth/login` — que por sua vez chama `JwtUtil.generateToken()` (access token) e `RefreshTokenService.issue()` (refresh token). Retorna **`200 OK`** com `TokenPairResponse` no corpo (auto-login via magic link: usuário sai da ativação já autenticado, sem precisar chamar `/auth/login` em seguida). Controller também ecoa o access token no header `Authorization: Bearer ...` (`UserController.java:37-43`), igual ao `/auth/login`.
+
+**Breaking change:** este endpoint retornava `204 No Content` sem corpo; agora retorna `200 OK` com `TokenPairResponse` (`accessToken`, `refreshToken`, `expiresIn`). Qualquer cliente que tratava a resposta de ativação como "sem corpo" precisa ser atualizado.
 
 ### `POST /auth/resend-activation`
 
@@ -38,7 +40,7 @@ Controller: `UserController` está mapeado em `@RequestMapping("/auth")` (`UserC
 1. `UserController.login` (`:47-54`) valida `LoginRequest` (record interno, `email`/`password` `@NotBlank`).
 2. `AuthService.login` (`:46-57`): busca usuário por e-mail e compara senha (BCrypt) em uma única cadeia — falha em qualquer um dos dois → `BadCredentialsException` (mensagem genérica, não revela qual campo errou) → 401 `AUTH_BAD_CREDENTIALS`.
 3. Se encontrado mas `status != ACTIVE` → `AppException(ACCOUNT_NOT_ACTIVATED)` → 403.
-4. `issueTokenPair` (`:96-101`): gera access token JWT (`jwtUtil.generateToken`) e refresh token opaco (`RefreshTokenService.issue`, hash SHA-256 persistido). Não revoga sessões anteriores — múltiplas sessões concorrentes são permitidas.
+4. `TokenIssuer.issueTokenPair` (`TokenIssuer.java:19-24`) — componente compartilhado com `/auth/activate` — gera access token JWT (`jwtUtil.generateToken`) e refresh token opaco (`RefreshTokenService.issue`, hash SHA-256 persistido). Não revoga sessões anteriores — múltiplas sessões concorrentes são permitidas.
 5. Controller define o access token também no header `Authorization: Bearer ...` **além** do corpo (`UserController.java:51-53`) — duplicação a observar.
 
 ### `POST /auth/refresh` — rotação com detecção de reuso
@@ -151,6 +153,7 @@ Fonte: `UserController.java:87-93`, `UserProfileService.java:72-115`. Validaçã
 
 ## Pontos de Atenção
 
+- **Breaking change em `/auth/activate`:** o endpoint passou de `204 No Content` para `200 OK` com `TokenPairResponse` no corpo (auto-login via magic link). Clientes existentes que não esperam corpo/leem `204` precisam ser atualizados.
 - **Inconsistência de prefixo de rota:** o controller real expõe `/auth/...`, mas `SecurityConfig`, `JwtAuthenticationFilter.shouldNotFilter` e `RateLimitingConfig` usam `/api/v1/auth/...` na whitelist/limites — não há `context-path` configurado. `[INFERIDO — confirmar com time: se os endpoints "públicos" e o rate limiting realmente nunca disparam por esse descasamento]`.
 - `/auth/refresh`, `/auth/logout`, `/auth/reset-password` não têm rate limit configurado, apesar de operarem sobre tokens sensíveis. `[descoberto na Fase 4]`
 - `401` é usado tanto para credenciais inválidas quanto para token de ativação/reset expirado ou já usado — um `400`/`410` seria mais convencional para esses últimos casos. `[INFERIDO]`

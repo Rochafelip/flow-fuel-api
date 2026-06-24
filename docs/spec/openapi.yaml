@@ -106,8 +106,17 @@ paths:
                 token:
                   type: string
       responses:
-        "204":
-          description: Conta ativada
+        "200":
+          description: Conta ativada; usuário é autenticado imediatamente (par de tokens retornado na mesma resposta)
+          headers:
+            Authorization:
+              description: "Access token também é ecoado no header: `Bearer <accessToken>`"
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPairResponse"
         "400":
           $ref: "#/components/responses/ValidationFailed"
         "401":
