@@ -49,8 +49,17 @@ flyctl secrets set \
   SPRING_DATASOURCE_PASSWORD="<senha-neon>" \
   JWT_SECRET="$(openssl rand -hex 32)" \
   FLOWFUEL_RATE_LIMIT_ENABLED=false \
-  MANAGEMENT_HEALTH_MAIL_ENABLED=false
+  MANAGEMENT_HEALTH_MAIL_ENABLED=false \
+  MAIL_ENABLED=true \
+  MAIL_HOST=smtp.sendgrid.net \
+  MAIL_PORT=587 \
+  MAIL_USERNAME=apikey \
+  MAIL_PASSWORD="<api-key-do-sendgrid>" \
+  MAIL_FROM="flowfuelapp@gmail.com" \
+  ACCOUNT_ACTIVATION_LINK_BASE_URL="<url-do-frontend-em-producao>/activate"
 ```
+
+(`MAIL_USERNAME` no SendGrid é sempre a string literal `apikey`, não o seu usuário. `MAIL_FROM` precisa estar verificado em Settings → Sender Authentication no painel do SendGrid antes do envio funcionar.)
 
 ### 6. Deploy
 ```bash
@@ -67,10 +76,10 @@ flyctl deploy
 ## Pontos de atenção / pendências
 
 - **Rate limiting está desligado em produção.** Os endpoints de auth (`/login`, `/register`, `/forgot-password`, `/resend-activation`) não têm proteção contra brute-force até que um Redis externo seja configurado e a flag seja revertida para `true`.
-- **Envio de e-mail de ativação de conta está desligado** (`MAIL_ENABLED=false` não foi setado explicitamente — herda o default `false` do [application.properties](../src/main/resources/application.properties#L65)). O link de ativação só vai para o log da aplicação. Configurar SendGrid (`MAIL_*` secrets) se for necessário.
+- **Envio de e-mail de ativação de conta**: configurar via os secrets `MAIL_*` do passo 5 (SendGrid). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o link de ativação só vai para o log da aplicação.
 - **Senha do Postgres do Neon foi exposta em texto puro numa conversa antes de ser usada.** Recomendado resetar a senha no painel do Neon (Settings > Reset password) por precaução.
 - **Upload de foto de perfil** agora usa o próprio Postgres (tabela `stored_files`, ver `docs/superpowers/specs/2026-06-18-photo-storage-in-postgres-design.md`) — sem dependência externa de storage.
-- **Auto-deploy do GitHub Actions (`flyctl launch`) falhou ao tentar setar `FLY_API_TOKEN`** nos secrets do repositório (sem permissão da CLI `gh` configurada). Deploys atuais são manuais via `flyctl deploy`. Se quiser CI/CD automático, configurar `FLY_API_TOKEN` manualmente nos GitHub Secrets e criar um workflow equivalente ao [render.yaml](../render.yaml)/[ci.yml](../.github/workflows/ci.yml) (que ficou específico do Render e não é usado nesse caminho).
+- **Auto-deploy do GitHub Actions (`flyctl launch`) falhou ao tentar setar `FLY_API_TOKEN`** nos secrets do repositório (sem permissão da CLI `gh` configurada). Isso foi corrigido depois: [.github/workflows/fly-deploy.yml](../.github/workflows/fly-deploy.yml) já dispara `flyctl deploy` a cada push em `main`, usando o secret `FLY_API_TOKEN`. [.github/workflows/ci.yml](../.github/workflows/ci.yml) ainda referencia Deploy Hooks do Render (`RENDER_DEPLOY_HOOK_*`) e não é usado nesse caminho — é resquício do setup anterior e candidato a limpeza.
 
 ## Comandos úteis
 
