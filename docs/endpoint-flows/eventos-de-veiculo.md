@@ -31,9 +31,11 @@ Fonte: `VehicleEventService.java:26-41`. Validação Bean (`VehicleEventRequestD
 - Apesar de a entidade ter campo `odometer`, **não há atualização de `vehicle.currentKm`** na criação de evento — diferente do que ocorre em `Refuel`.
 - Não há campo calculado (`totalAmount` equivalente): `amount` é gravado exatamente como enviado pelo cliente, sem `@PrePersist`.
 
-## `GET /vehicle-events/vehicle/{vehicleId}` — listar (filtro tipo/data)
+## `GET /vehicle-events/vehicle/{vehicleId}` — listar (filtro tipo/data, paginado)
 
 `VehicleEventService.getVehicleEvents` (`:71-96`): `findOwned` (404/403), depois 4 variações de query conforme os filtros presentes — `type`+datas, só `type`, só datas, ou nenhum filtro (`VehicleEventRepository.java:13-33`). Mesma limitação dos abastecimentos: as variações "com data" exigem **ambos** `startDate` e `endDate` simultaneamente; um único parâmetro de data não filtra nada. Todas as variações ordenam por `eventDate DESC, createdAt DESC, id DESC` — critério de desempate determinístico (mais robusto que a ordenação só por data usada em `Refuel`).
+
+Paginação via `?page=0&size=20` (`@PageableDefault(size = 20)`). Resposta no formato `PageResponseDTO<VehicleEventResponseDTO>` (`common/PageResponseDTO.java`): `content`, `page`, `size`, `totalElements`, `totalPages`. Ver convenção geral de paginação em [docs/README.md](../README.md#convenção-de-paginação).
 
 `type` inválido na query (string fora do enum `VehicleEventType`) gera `MethodArgumentTypeMismatchException`, sem handler dedicado em `GlobalExceptionHandler` → cai no genérico → **500** em vez de `400`. `[descoberto na Fase 4 — mesmo gap de Refuel]`
 

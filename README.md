@@ -267,7 +267,7 @@ A API está em produção na Fly.io (app `flowfuel-api`, região `gru`), com dep
 
 Pontos de atenção do ambiente atual:
 
-- **Rate limiting está desabilitado em produção** (`FLOWFUEL_RATE_LIMIT_ENABLED=false`) por falta de Redis provisionado — risco pendente nos endpoints de auth.
+- **Rate limiting (bucket4j) ainda roda em fail-open em produção** — o filtro está habilitado (`RATE_LIMIT_ENABLED=true` por padrão), mas como nenhum Redis foi provisionado em prod ainda, requisições passam sem limite (log de warning), silenciosamente sem enforcement. Dev local já tem Redis via `docker-compose.yml` e roda em modo enforce. Risco pendente nos endpoints de auth até o Redis de produção (Upstash/Fly) ser provisionado — ver [docs/superpowers/specs/2026-06-25-provision-redis-rate-limit-design.md](docs/superpowers/specs/2026-06-25-provision-redis-rate-limit-design.md).
 - Email transacional (ativação de conta) via **SendGrid SMTP**, com `MAIL_FROM=flowfuelapp@gmail.com` — sender Gmail sem domínio próprio, sujeito a cair em spam por falha de DMARC.
 - Health check do Fly aponta para `/actuator/health`.
 

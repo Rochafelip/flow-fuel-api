@@ -42,9 +42,11 @@ Regras de negócio, todas `BusinessRuleException` → 400 `BUSINESS_RULE_VIOLATE
 - Preço por unidade fora da faixa esperada para o tipo (combustível vs elétrico).
 - `energyAmount` maior que a capacidade efetiva do veículo (tanque ou bateria), quando essa capacidade está cadastrada.
 
-## `GET /refuels/vehicle/{vehicleId}` — listar (filtro por data)
+## `GET /refuels/vehicle/{vehicleId}` — listar (filtro por data, paginado)
 
 `RefuelService.getVehicleRefuels` (`:68-83`): `findOwned`-equivalente (busca veículo + `ensureOwnsVehicle`, 404/403). Filtro por intervalo de datas só é aplicado se **ambos** `startDate` e `endDate` forem enviados (`findByVehicleIdAndRefuelDateBetweenOrderByRefuelDateDesc`); enviar só um dos dois é ignorado silenciosamente e cai na listagem completa (`findByVehicleIdOrderByRefuelDateDesc`). `[descoberto na Fase 4 — comportamento não documentado em nenhum lugar do código]` Data malformada na query → `MethodArgumentTypeMismatchException` sem handler dedicado → 500.
+
+Paginação via `?page=0&size=20` (`@PageableDefault(size = 20)`, `RefuelController.java:34`) — sem `sort` explícito documentado no código, mas Spring aceita `&sort=campo,dir` por convenção do framework. Resposta no formato `PageResponseDTO<RefuelResponseDTO>` (`common/PageResponseDTO.java`): `content`, `page`, `size`, `totalElements`, `totalPages`. Ver convenção geral de paginação em [docs/README.md](../README.md#convenção-de-paginação).
 
 ## `GET /refuels/{id}` — detalhe
 
