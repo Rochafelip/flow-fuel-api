@@ -68,7 +68,7 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenIssuer);
+        verifyNoInteractions(tokenIssuer, auditLogService);
     }
 
     @Test
@@ -85,7 +85,7 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenIssuer);
+        verifyNoInteractions(tokenIssuer, auditLogService);
     }
 
     @Test
@@ -101,7 +101,7 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenIssuer);
+        verifyNoInteractions(tokenIssuer, auditLogService);
     }
 
     @Test
@@ -110,6 +110,6 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenRepository, tokenIssuer);
+        verifyNoInteractions(tokenRepository, tokenIssuer, auditLogService);
     }
 }
