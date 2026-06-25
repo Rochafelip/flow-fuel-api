@@ -46,7 +46,8 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
 
     @Override
     public void sendActivationLink(User user, String activationToken) {
-        String link = linkBaseUrl + "?token=" + activationToken;
+        String link = linkBaseUrl + "?token=" + activationToken
+                + "&email=" + java.net.URLEncoder.encode(user.getEmail(), java.nio.charset.StandardCharsets.UTF_8);
         String greetingName = user.getName() != null ? " " + user.getName() : "";
         String validity = formatValidity(tokenTtlMinutes);
 
