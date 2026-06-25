@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.audit.AuditAction;
+import com.devappmobile.flowfuel.audit.AuditLogService;
 import com.devappmobile.flowfuel.common.error.AppException;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.config.JwtUtil;
@@ -22,6 +24,7 @@ public class AuthService {
     private final RefreshTokenService refreshTokenService;
     private final AccountActivationService accountActivationService;
     private final TokenIssuer tokenIssuer;
+    private final AuditLogService auditLogService;
 
     /**
      * Cadastra um novo usuario com status {@link UserStatus#PENDING_ACTIVATION} e
@@ -55,7 +58,9 @@ public class AuthService {
                     "Conta não ativada. Verifique seu email para ativar a conta.");
         }
 
-        return tokenIssuer.issueTokenPair(user);
+        TokenPairResponse tokens = tokenIssuer.issueTokenPair(user);
+        auditLogService.record(user.getId(), AuditAction.LOGIN);
+        return tokens;
     }
 
     public TokenPairResponse refresh(String refreshToken) {
@@ -87,12 +92,14 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
         refreshTokenService.revokeAllForUser(userId);
+        auditLogService.record(userId, AuditAction.PASSWORD_CHANGE);
     }
 
     public void deleteUser(Long userId) {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("Usuário", userId);
         }
+        auditLogService.record(userId, AuditAction.ACCOUNT_DELETION);
         userRepository.deleteById(userId);
     }
 
