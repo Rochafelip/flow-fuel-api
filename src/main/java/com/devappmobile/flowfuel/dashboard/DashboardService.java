@@ -52,11 +52,15 @@ public class DashboardService {
             lastOdometer = lastRefuel.getOdometer();
         }
 
+        BigDecimal costPerKm = calculateCostPerKm(
+                refuelRepository.findByVehicleIdOrderByOdometerDesc(vehicleId));
+
         DashboardDTO.DashboardDTOBuilder builder = DashboardDTO.builder()
                 .vehicleId(vehicleId)
                 .energyType(vehicle.getEnergyType())
                 .totalRefuels(totalRefuels)
                 .totalSpent(totalSpent)
+                .costPerKm(costPerKm)
                 .lastRefuelDate(lastRefuelDate)
                 .lastOdometer(lastOdometer);
 
@@ -167,5 +171,46 @@ public class DashboardService {
         return BigDecimal.valueOf(consumption)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
+    }
+
+    /**
+     * Custo médio por km rodado (R$/km), usando TODOS os abastecimentos (cheios ou
+     * parciais) — diferente de {@code calculateAverageConsumption}, não exige tanque
+     * cheio, pois todo valor pago entre dois abastecimentos custeou aquele trecho rodado.
+     *
+     * <p>Para cada par consecutivo (refuels ordenados por odômetro desc), soma
+     * {@code kmDriven} e o {@code totalAmount} do abastecimento mais recente do par
+     * (pares com kmDriven <= 0 são ignorados). Resultado: {@code SUM(totalAmount) / SUM(kmDriven)}.
+     *
+     * <p>Em veículos HYBRID, a lista recebida já combina fuel + electric (ordenada por
+     * odômetro), então o resultado é naturalmente o custo combinado.
+     */
+    private BigDecimal calculateCostPerKm(List<Refuel> refuelsOrderedByOdometerDesc) {
+        if (refuelsOrderedByOdometerDesc.size() < 2) {
+            return BigDecimal.ZERO;
+        }
+
+        double totalKm = 0;
+        BigDecimal totalSpentOnSegments = BigDecimal.ZERO;
+
+        for (int i = 0; i < refuelsOrderedByOdometerDesc.size() - 1; i++) {
+            Refuel current = refuelsOrderedByOdometerDesc.get(i);
+            Refuel previous = refuelsOrderedByOdometerDesc.get(i + 1);
+
+            double kmDriven = current.getOdometer() - previous.getOdometer();
+
+            if (kmDriven > 0) {
+                totalKm += kmDriven;
+                totalSpentOnSegments = totalSpentOnSegments.add(current.getTotalAmount());
+            }
+        }
+
+        if (totalKm == 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return totalSpentOnSegments
+                .divide(BigDecimal.valueOf(totalKm), 10, RoundingMode.HALF_UP)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 }

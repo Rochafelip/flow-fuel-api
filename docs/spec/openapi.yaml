@@ -1491,6 +1491,15 @@ components:
         totalSpent:
           type: number
           format: double
+        costPerKm:
+          type: number
+          format: double
+          example: 0.42
+          description: >-
+            Custo médio por km rodado (R$/km), calculado sobre TODOS os abastecimentos
+            (cheios ou parciais, qualquer tipo) — não exige tanque cheio, diferente de
+            averageConsumption. Sempre presente, inclusive em HYBRID (combina
+            combustível e elétrico). 0 se houver menos de 2 abastecimentos.
         totalEnergy:
           type: number
           format: double

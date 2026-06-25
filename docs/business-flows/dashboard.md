@@ -18,11 +18,13 @@ Apresentar ao usuário um resumo consolidado de custos e consumo de um veículo 
 **Passos principais (veículo não-híbrido: COMBUSTION ou ELECTRIC):**
 1. Sistema calcula: `totalRefuels` (contagem), `totalSpent` (soma de `totalAmount`), `totalEnergy` (soma de `energyAmount`), `averagePrice` (média de `pricePerUnit`), `lastRefuelDate` e `lastOdometer` (do abastecimento mais recente).
 2. Sistema calcula `averageConsumption` (ver algoritmo abaixo).
-3. Unidades variam por tipo de energia: COMBUSTION → litros/R$ por litro/km por litro; ELECTRIC → kWh/R$ por kWh/km por kWh.
+3. Sistema calcula `costPerKm` (ver algoritmo abaixo).
+4. Unidades variam por tipo de energia: COMBUSTION → litros/R$ por litro/km por litro; ELECTRIC → kWh/R$ por kWh/km por kWh.
 
 **Passos principais (veículo híbrido):**
 1. Sistema calcula as métricas totais (contagem, gasto total, última data/odômetro) considerando todos os abastecimentos, independente do tipo.
-2. Sistema gera também uma quebra (`breakdown`) separada por tipo de abastecimento — uma seção para `FUEL` e outra para `ELECTRIC` — cada uma com seu próprio total de energia, gasto, preço médio e consumo médio.
+2. Sistema calcula `costPerKm` combinando automaticamente combustível e elétrico (ver algoritmo abaixo) — não há `costPerKm` separado por tipo dentro do `breakdown`.
+3. Sistema gera também uma quebra (`breakdown`) separada por tipo de abastecimento — uma seção para `FUEL` e outra para `ELECTRIC` — cada uma com seu próprio total de energia, gasto, preço médio e consumo médio.
 
 **Algoritmo de Consumo Médio (`averageConsumption`):**
 1. Considera **apenas abastecimentos com `fullTank = true`** (tanque completo) — abastecimentos parciais são ignorados no cálculo de consumo.
@@ -34,6 +36,16 @@ Apresentar ao usuário um resumo consolidado de custos e consumo de um veículo 
 
 **Exemplo (do próprio código-fonte):**
 3 abastecimentos de tanque completo C(3000km, 40L) → B(2200km, 35L) → A(1500km, 30L): pares (C-B): 800km/40L e (B-A): 700km/35L → consumo = (800+700)/(40+35) = 20,00 km/L.
+
+**Algoritmo de Custo por km (`costPerKm`):**
+1. Considera **todos os abastecimentos** (cheios ou parciais, qualquer tipo) — diferente de `averageConsumption`, não exige tanque cheio: todo valor pago entre dois abastecimentos custeou aquele trecho rodado.
+2. Ordena os abastecimentos por odômetro (decrescente) e forma pares consecutivos.
+3. Para cada par (atual, anterior): `kmDriven = odometer(atual) - odometer(anterior)`. O par só é considerado se `kmDriven > 0`.
+4. Resultado = soma de todos os `totalAmount(atual)` dos pares válidos ÷ soma de todos os `kmDriven`, arredondado para 2 casas decimais (HALF_UP).
+5. **Requer no mínimo 2 abastecimentos** — caso contrário, ou se o km total for zero, o custo por km retorna `0`.
+6. Em veículos **HYBRID**, a lista usada já mistura abastecimentos `FUEL` e `ELECTRIC` (ordenados por odômetro), então o resultado combina naturalmente o custo das duas fontes de energia em um único valor no nível raiz da resposta.
+
+**Exemplo:** abastecimentos A(km 1000, R$50) → B(km 1500, R$60) → C(km 2300, R$80): pares (B-A): 500km/R$60 e (C-B): 800km/R$80 → custo por km = (60+80)/(500+800) = R$0,11/km.
 
 **Pós-condições:** Nenhuma — consulta somente leitura, sem efeitos colaterais; sem cache, recalculado a cada chamada.
 
