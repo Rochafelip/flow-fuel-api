@@ -46,6 +46,7 @@ flowchart TB
 - [Abastecimentos](endpoint-flows/abastecimentos.md)
 - [Eventos de Veículo](endpoint-flows/eventos-de-veiculo.md)
 - [Dashboard](endpoint-flows/dashboard.md)
+- [Auditoria](endpoint-flows/auditoria.md)
 
 ### Roadmap de Melhorias
 - [Visão geral do roadmap (bugs e débitos técnicos encontrados durante a documentação)](roadmap/README.md)

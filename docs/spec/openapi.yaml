@@ -29,6 +29,8 @@ tags:
     description: Eventos de manutenção, seguro, taxas etc. associados a um veículo
   - name: Dashboard
     description: Estatísticas agregadas de consumo e gasto por veículo
+  - name: AuditLogs
+    description: Consulta de logs de auditoria (admin-only)
 
 paths:
   /:
@@ -1005,6 +1007,38 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/audit-logs:
+    get:
+      tags: [AuditLogs]
+      summary: Lista logs de auditoria (admin-only, paginado, filtrável por userId/action)
+      description: >-
+        Requer `User.isAdmin = true` (AuthorizationHelper.ensureIsAdmin); demais usuários
+        autenticados recebem 403. Não há endpoint de promoção a admin — coluna
+        `users.is_admin` é setada manualmente via SQL.
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: action
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AuditAction"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+      responses:
+        "200":
+          description: Página de logs de auditoria (default size=20, ordenado por createdAt DESC)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageAuditLogResponseDTO"
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1261,6 +1295,10 @@ components:
     VehicleEventType:
       type: string
       enum: [FUEL, MAINTENANCE, OIL_CHANGE, CAR_WASH, TIRES, INSURANCE, TAX, DOCUMENTS, OTHER]
+
+    AuditAction:
+      type: string
+      enum: [LOGIN, PASSWORD_CHANGE, ACCOUNT_DELETION, ACCOUNT_ACTIVATION, PASSWORD_RESET]
 
     VehicleRequestDTO:
       type: object
@@ -1570,6 +1608,36 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/VehicleEventResponseDTO"
+
+    AuditLogResponseDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+          nullable: true
+          description: Snapshot — não há FK para users; sobrevive à exclusão da conta (ACCOUNT_DELETION)
+        action:
+          $ref: "#/components/schemas/AuditAction"
+        ipAddress:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PageAuditLogResponseDTO:
+      allOf:
+        - $ref: "#/components/schemas/PageMetadata"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuditLogResponseDTO"
 
     PageMetadata:
       type: object
