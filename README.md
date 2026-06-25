@@ -2,7 +2,7 @@
 
 Aplicação Spring Boot para gerenciamento de combustível: cadastro/login de usuários, veículos, abastecimentos e dashboard de consumo.
 
-**Versão atual:** `0.0.1-SNAPSHOT`
+**Versão atual:** `0.1.0` (em produção, deploy via Fly.io)
 
 ## Stack
 
@@ -33,7 +33,7 @@ export JWT_SECRET=$(openssl rand -base64 32)
 mvn clean package -DskipTests
 
 # Executar
-java -jar target/flowfuel-0.0.1-SNAPSHOT.jar
+java -jar target/flowfuel-0.1.0.jar
 # ou
 mvn spring-boot:run
 ```
@@ -63,6 +63,18 @@ Com a aplicação em execução, o Swagger UI fica disponível em:
 - [src/main/java/com/devappmobile/flowfuel/dashboard/](src/main/java/com/devappmobile/flowfuel/dashboard/) — métricas de consumo por veículo
 
 ## Autenticação
+
+### Ativação de conta (magic link)
+
+Usuários criados via `POST /api/v1/auth/register` nascem com status `PENDING_ACTIVATION` e **não conseguem logar** até ativar a conta:
+
+1. No registro, o backend gera um token opaco de ativação (hashado em SHA-256 no banco, TTL configurável via `flowfuel.account-activation.token-ttl-minutes`, default 60 min) e envia um link por email: `<ACCOUNT_ACTIVATION_LINK_BASE_URL>?token=...&email=<email>` (email incluído para suportar deep link no app mobile).
+2. `POST /api/v1/auth/activate` com `{"token": "..."}` valida o token, marca o usuário como `ACTIVE` e já devolve o par `accessToken`/`refreshToken` (auto-login — o usuário não precisa logar manualmente após ativar).
+3. `POST /api/v1/auth/resend-activation` com `{"email": "..."}` reenvia o link (não revela se o email existe ou já está ativo, para evitar enumeração de contas).
+4. Em produção/staging, um validador `@PostConstruct` impede a aplicação de subir se `ACCOUNT_ACTIVATION_LINK_BASE_URL` estiver vazio ou apontando para `localhost` — evita emails com link de ativação quebrado.
+5. Envio de email é uma estratégia plugável: com `MAIL_ENABLED=false` (default em dev) o link só é logado (stub); com `MAIL_ENABLED=true` é enviado por SMTP (SendGrid) em HTML, com o token também exibido em texto puro copiável.
+
+### Login e par de tokens
 
 Fluxo de **par de tokens** ([ADR-003](Claude/adr/ADR-003-autenticacao-jwt.md)):
 
@@ -96,7 +108,9 @@ Toda resposta (sucesso ou erro) inclui o header `X-Request-Id` com um UUID gerad
 
 | Método | Path                                | Descrição                                              |
 | ------ | ----------------------------------- | ------------------------------------------------------ |
-| POST   | `/register`                         | Cria usuário                                           |
+| POST   | `/register`                         | Cria usuário (status inicial `PENDING_ACTIVATION`)     |
+| POST   | `/activate`                         | Ativa a conta, devolve par de tokens (auto-login)      |
+| POST   | `/resend-activation`                | Reenvia o email de ativação                            |
 | POST   | `/login`                            | Autentica e retorna par `accessToken` + `refreshToken` |
 | POST   | `/refresh`                          | Rotaciona o par de tokens                              |
 | POST   | `/logout`                           | Revoga o `refreshToken` da sessão atual                |
@@ -247,8 +261,24 @@ Fonte única em [ErrorCode.java](src/main/java/com/devappmobile/flowfuel/common/
 | `EMAIL_ALREADY_REGISTERED` | 409  | Tentativa de registro/atualização com email já em uso.                                           |
 | `INTERNAL_ERROR`           | 500  | Erro inesperado no servidor. Use o `requestId` para localizar no Sentry.                         |
 
+## Deploy (produção)
+
+A API está em produção na Fly.io (app `flowfuel-api`, região `gru`), com deploy automático a cada push em `main` ([fly-deploy.yml](.github/workflows/fly-deploy.yml)). Banco gerenciado (Neon Postgres) e secrets configurados via `flyctl secrets` — lista completa em [docs/deploy.md](docs/deploy.md).
+
+Pontos de atenção do ambiente atual:
+
+- **Rate limiting está desabilitado em produção** (`FLOWFUEL_RATE_LIMIT_ENABLED=false`) por falta de Redis provisionado — risco pendente nos endpoints de auth.
+- Email transacional (ativação de conta) via **SendGrid SMTP**, com `MAIL_FROM=flowfuelapp@gmail.com` — sender Gmail sem domínio próprio, sujeito a cair em spam por falha de DMARC.
+- Health check do Fly aponta para `/actuator/health`.
+
+## Observabilidade
+
+- **Aplicação Spring**: logs JSON estruturados (Logstash encoder) com MDC `requestId`/`userId`; Sentry captura erros 5xx (DSN/ambiente/release configuráveis via `sentry.*` em `application-prod.properties`).
+- **Scripts Node.js standalone** (manutenção/admin, fora da aplicação Spring): instrumentados com `@sentry/node` via `node --require ./scripts/instrument.js <script>`.
+
 ## Observações
 
 - Todo `Vehicle` é vinculado a um `User` (`@ManyToOne nullable = false`).
 - DTOs usam Bean Validation (`@Valid`, `@NotBlank`, etc.).
 - `EnergyType` é uma enum — verifique os valores aceitos em [EnergyType.java](src/main/java/com/devappmobile/flowfuel/vehicle/EnergyType.java).
+- Os links para ADR-003 e ADR-008 acima apontam para `Claude/adr/`, que não existe atualmente no repositório `[INCONSISTÊNCIA — confirmar com time se os ADRs foram movidos/removidos]`.
