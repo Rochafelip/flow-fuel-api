@@ -27,4 +27,10 @@ public class AuthorizationHelper {
             throw new ForbiddenOperationException("Evento não pertence ao usuário");
         }
     }
+
+    public void ensureIsAdmin(User user) {
+        if (!user.isAdmin()) {
+            throw new ForbiddenOperationException("Operação restrita a administradores");
+        }
+    }
 }

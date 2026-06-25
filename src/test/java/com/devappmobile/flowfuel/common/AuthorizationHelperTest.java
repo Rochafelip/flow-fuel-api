@@ -86,4 +86,20 @@ class AuthorizationHelperTest {
                 .isInstanceOf(ForbiddenOperationException.class)
                 .hasMessageContaining("Evento não pertence ao usuário");
     }
+
+    // --- ensureIsAdmin ---
+
+    @Test
+    void ensureIsAdmin_usuarioAdmin_doesNotThrow() {
+        owner.setAdmin(true);
+
+        assertThatNoException().isThrownBy(() -> helper.ensureIsAdmin(owner));
+    }
+
+    @Test
+    void ensureIsAdmin_usuarioNaoAdmin_throwsForbidden() {
+        assertThatThrownBy(() -> helper.ensureIsAdmin(other))
+                .isInstanceOf(ForbiddenOperationException.class)
+                .hasMessageContaining("Operação restrita a administradores");
+    }
 }
