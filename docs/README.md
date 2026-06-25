@@ -56,7 +56,7 @@ Endpoints de listagem paginados — hoje `GET /refuels/vehicle/{vehicleId}` e `G
 
 - Query params: `?page=0&size=20` (`page` 0-indexed; `size` default 20 via `@PageableDefault`). Spring também aceita `&sort=campo,asc|desc` por convenção do framework, ainda que não documentado explicitamente em cada endpoint.
 - Resposta envolvida em `PageResponseDTO<T>` (`common/PageResponseDTO.java`): `content` (lista da página atual), `page`, `size`, `totalElements`, `totalPages`.
-- Demais endpoints de listagem (ex: `GET /vehicles`) **não são paginados** — retornam a lista completa.
+- `GET /vehicles` também segue essa convenção (`PageableDefault(size = 20, sort = "createdAt", direction = DESC)`). `GET /vehicles/active` retorna um único veículo (não é uma listagem) e não é paginado.
 
 ## Glossário
 
