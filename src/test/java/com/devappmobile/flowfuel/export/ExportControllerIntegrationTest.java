@@ -43,6 +43,7 @@ class ExportControllerIntegrationTest {
 
     private Vehicle vehicle;
     private String ownerToken;
+    private LocalDate savedRefuelDate;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -71,7 +72,8 @@ class ExportControllerIntegrationTest {
         refuel.setPricePerUnit(BigDecimal.valueOf(5.89));
         refuel.setRefuelType(RefuelType.FUEL);
         refuel.setRefuelDate(LocalDateTime.of(2026, 6, 1, 10, 0));
-        refuelRepository.save(refuel);
+        Refuel savedRefuel = refuelRepository.save(refuel);
+        savedRefuelDate = savedRefuel.getRefuelDate().toLocalDate();
 
         VehicleEvent event = new VehicleEvent();
         event.setVehicle(vehicle);
@@ -111,7 +113,7 @@ class ExportControllerIntegrationTest {
                 .andExpect(header().string("Content-Disposition",
                         org.hamcrest.Matchers.containsString("flowfuel-refuels-toyota-corolla-")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))));
+                        savedRefuelDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))));
     }
 
     @Test
