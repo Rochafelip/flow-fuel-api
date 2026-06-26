@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -31,6 +32,8 @@ public class ExportService {
 
     private static final String[] EVENT_HEADERS =
             {"Data", "Tipo", "Descrição", "Valor", "Odômetro"};
+
+    private static final Set<Character> FORMULA_TRIGGER_CHARS = Set.of('=', '+', '-', '@');
 
     private final RefuelRepository refuelRepository;
     private final VehicleEventRepository vehicleEventRepository;
@@ -125,10 +128,20 @@ public class ExportService {
         return new String[]{
                 event.getEventDate().format(DATE_FORMAT),
                 event.getType().name(),
-                event.getDescription() != null ? event.getDescription() : "",
+                sanitizeSpreadsheetCell(event.getDescription() != null ? event.getDescription() : ""),
                 event.getAmount().toPlainString(),
                 event.getOdometer() != null ? String.valueOf(event.getOdometer()) : ""
         };
+    }
+
+    private String sanitizeSpreadsheetCell(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        if (FORMULA_TRIGGER_CHARS.contains(value.charAt(0))) {
+            return "'" + value;
+        }
+        return value;
     }
 
     private Vehicle findOwnedVehicle(User user, Long vehicleId) {

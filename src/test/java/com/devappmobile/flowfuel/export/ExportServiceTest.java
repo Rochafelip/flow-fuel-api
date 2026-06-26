@@ -195,6 +195,18 @@ class ExportServiceTest {
     }
 
     @Test
+    void exportEvents_descricaoComCaractereDeFormula_recebePrefixoDeEscape() {
+        when(vehicleEventRepository.findByVehicleIdOrderByEventDateDescCreatedAtDescIdDesc(10L))
+                .thenReturn(List.of(buildEvent(VehicleEventType.MAINTENANCE,
+                        LocalDate.of(2026, 6, 1), 150.0, "=cmd|'/c calc'!A1")));
+
+        ExportResult result = exportService.exportEvents(owner, 10L, null, null, null, "csv");
+
+        String content = new String(result.content());
+        assertThat(content).contains("'=cmd|'/c calc'!A1");
+    }
+
+    @Test
     void exportEvents_apenasEndDateInformada_lancaExportValidationException() {
         assertThatThrownBy(() -> exportService.exportEvents(
                 owner, 10L, null, null, LocalDate.of(2026, 1, 1), "csv"))
