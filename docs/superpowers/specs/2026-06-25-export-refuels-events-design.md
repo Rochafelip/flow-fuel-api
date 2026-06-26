@@ -21,13 +21,16 @@ opcional de período.
 ## Endpoints
 
 ```
-GET /exports/refuels?vehicleId={id}&startDate={LocalDate}&endDate={LocalDate}&format=csv|xlsx
-GET /exports/events?vehicleId={id}&type={VehicleEventType}&startDate={LocalDate}&endDate={LocalDate}&format=csv|xlsx
+GET /api/v1/exports/refuels?vehicleId={id}&startDate={LocalDate}&endDate={LocalDate}&format=csv|xlsx
+GET /api/v1/exports/events?vehicleId={id}&type={VehicleEventType}&startDate={LocalDate}&endDate={LocalDate}&format=csv|xlsx
 ```
 
-- Seguem o padrão dos controllers existentes (`RefuelController`, `VehicleEventController`):
-  sem prefixo `/api` (o projeto não usa `server.servlet.context-path`), `@AuthenticationPrincipal User`,
-  parâmetros via `@RequestParam`.
+- O controller declara `@RequestMapping("/exports")` (sem prefixo manual), igual a
+  `RefuelController`/`VehicleEventController`. O prefixo `/api/v1` é aplicado automaticamente
+  pelo `WebMvcConfig` (`config/WebMvcConfig.java`), que adiciona esse path prefix a todo
+  `@RestController` do pacote `com.devappmobile.flowfuel.*` — por isso a URL final inclui
+  `/api/v1` mesmo sem aparecer na anotação.
+- `@AuthenticationPrincipal User`, parâmetros via `@RequestParam`, igual aos demais controllers.
 - `vehicleId` é **obrigatório** nesta spec. Exportação "todos os veículos" (História 5.5/5.8)
   fica para a Spec 3.
 - `format` é obrigatório, valores aceitos: `csv`, `xlsx` (case-insensitive). Qualquer outro

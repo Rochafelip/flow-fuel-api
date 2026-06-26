@@ -189,8 +189,8 @@ class CsvExportStrategyTest {
 
         assertThat(lines).containsExactly(
                 "Data,Tipo,Valor",
-                "25/06/2026,MAINTENANCE,150,00",
-                "01/07/2026,CAR_WASH,40,00"
+                "25/06/2026,MAINTENANCE,\"150,00\"",
+                "01/07/2026,CAR_WASH,\"40,00\""
         );
     }
 
