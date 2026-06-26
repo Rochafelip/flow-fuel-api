@@ -33,6 +33,8 @@ public interface RefuelRepository extends JpaRepository<Refuel, Long> {
 
     List<Refuel> findByVehicleIdAndFullTankTrueOrderByRefuelDateDesc(Long vehicleId);
 
+    List<Refuel> findByVehicleIdOrderByOdometerDesc(Long vehicleId);
+
     Optional<Refuel> findTopByVehicleIdOrderByRefuelDateDesc(Long vehicleId);
 
     @Query("SELECT SUM(r.totalAmount) FROM Refuel r WHERE r.vehicle.id = :vehicleId")

@@ -31,6 +31,7 @@ class AuthServiceTest {
     @Mock private RefreshTokenService refreshTokenService;
     @Mock private AccountActivationService accountActivationService;
     @Mock private TokenIssuer tokenIssuer;
+    @Mock private com.devappmobile.flowfuel.audit.AuditLogService auditLogService;
 
     @InjectMocks private AuthService authService;
 
@@ -105,7 +106,7 @@ class AuthServiceTest {
     // --- login ---
 
     @Test
-    void login_comCredenciaisValidas_retornaTokenPair() {
+    void login_comCredenciaisValidas_retornaTokenPairEGravaAuditLog() {
         TokenPairResponse expected = new TokenPairResponse("jwt-token-gerado", "refresh-plain", 900L);
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("senha123", "hashed_password")).thenReturn(true);
@@ -114,6 +115,7 @@ class AuthServiceTest {
         TokenPairResponse response = authService.login("test@example.com", "senha123");
 
         assertThat(response).isEqualTo(expected);
+        verify(auditLogService).record(1L, com.devappmobile.flowfuel.audit.AuditAction.LOGIN);
     }
 
     @Test
@@ -149,7 +151,7 @@ class AuthServiceTest {
     // --- changePassword ---
 
     @Test
-    void changePassword_comSenhaAtualCorreta_atualizaSenhaERevogaRefreshTokens() {
+    void changePassword_comSenhaAtualCorreta_atualizaSenhaERevogaRefreshTokensEGravaAuditLog() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("senha_atual", "hashed_password")).thenReturn(true);
         when(passwordEncoder.matches("senha_nova", "hashed_password")).thenReturn(false);
@@ -159,6 +161,7 @@ class AuthServiceTest {
 
         verify(userRepository).save(argThat(u -> u.getPassword().equals("hash_nova")));
         verify(refreshTokenService).revokeAllForUser(1L);
+        verify(auditLogService).record(1L, com.devappmobile.flowfuel.audit.AuditAction.PASSWORD_CHANGE);
     }
 
     @Test
@@ -186,12 +189,13 @@ class AuthServiceTest {
     // --- deleteUser ---
 
     @Test
-    void deleteUser_existente_deleta() {
+    void deleteUser_existente_deletaEGravaAuditLog() {
         when(userRepository.existsById(1L)).thenReturn(true);
 
         authService.deleteUser(1L);
 
         verify(userRepository).deleteById(1L);
+        verify(auditLogService).record(1L, com.devappmobile.flowfuel.audit.AuditAction.ACCOUNT_DELETION);
     }
 
     @Test

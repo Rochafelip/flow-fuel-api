@@ -160,10 +160,24 @@
 			<artifactId>junit-jupiter</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>5.3.0</version>
+		</dependency>
 	</dependencies>
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- testcontainers pulls commons-compress 1.24.0, which lacks the
+			     ZipArchiveOutputStream#putArchiveEntry overload poi-ooxml 5.3.0
+			     requires at runtime (NoSuchMethodError when writing XLSX). Pin
+			     to a version compatible with both. -->
+			<dependency>
+				<groupId>org.apache.commons</groupId>
+				<artifactId>commons-compress</artifactId>
+				<version>1.27.1</version>
+			</dependency>
 			<dependency>
 				<groupId>com.github.docker-java</groupId>
 				<artifactId>docker-java-api</artifactId>

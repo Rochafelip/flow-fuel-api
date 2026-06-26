@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.audit.AuditAction;
+import com.devappmobile.flowfuel.audit.AuditLogService;
 import com.devappmobile.flowfuel.common.error.AppException;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.common.security.OpaqueTokenGenerator;
@@ -25,6 +27,7 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
     private final PasswordResetNotifier notifier;
+    private final AuditLogService auditLogService;
 
     @Value("${flowfuel.password-reset.token-ttl-minutes:30}")
     private long tokenTtlMinutes;
@@ -72,6 +75,7 @@ public class PasswordResetService {
 
         token.setUsedAt(LocalDateTime.now());
         refreshTokenService.revokeAllForUser(user.getId());
+        auditLogService.record(user.getId(), AuditAction.PASSWORD_RESET);
 
         log.info("Senha redefinida via token de reset userId={}", user.getId());
     }

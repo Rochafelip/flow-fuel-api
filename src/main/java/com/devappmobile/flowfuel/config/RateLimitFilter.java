@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.config;
 
+import com.devappmobile.flowfuel.common.ClientIpResolver;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.common.error.ProblemDetailWriter;
 import io.github.bucket4j.BucketConfiguration;
@@ -67,7 +68,7 @@ public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
 
         String path = request.getRequestURI();
         BucketConfiguration config = limitsByPath.get(path);
-        String clientIp = clientIp(request);
+        String clientIp = ClientIpResolver.resolve(request);
         String bucketKey = "rl:" + path + "|" + clientIp;
 
         ConsumptionProbe probe;
@@ -94,13 +95,5 @@ public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
                 ErrorCode.RATE_LIMIT_EXCEEDED.code(), path, clientIp, retryAfterSeconds);
         ProblemDetailWriter.write(response, path, ErrorCode.RATE_LIMIT_EXCEEDED,
                 "Muitas tentativas. Tente novamente em " + retryAfterSeconds + " segundos.");
-    }
-
-    private static String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }

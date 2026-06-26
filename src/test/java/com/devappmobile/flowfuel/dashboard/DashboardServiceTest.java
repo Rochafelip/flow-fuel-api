@@ -250,6 +250,120 @@ class DashboardServiceTest {
         assertThat(body.getAverageConsumption()).isEqualTo(20.0);
     }
 
+    /**
+     * Contrato da fórmula de custo por km: usa TODOS os abastecimentos (cheios ou
+     * parciais), ordenados por odômetro, e não exige tanque cheio (diferente de
+     * averageConsumption).
+     *
+     * Cenário: A(km 1000, R$50), B(km 1500, R$60), C(km 2300, R$80)
+     * Par B-A: 500 km / R$60; par C-B: 800 km / R$80
+     * Custo por km esperado = (60+80) / (500+800) = 140/1300 = 0,1077 ≈ 0,11
+     */
+    @Test
+    void getVehicleDashboard_comTresAbastecimentos_calculaCustoPorKm() {
+        Refuel refuelC = new Refuel();
+        refuelC.setOdometer(2300);
+        refuelC.setTotalAmount(BigDecimal.valueOf(80));
+        refuelC.setRefuelDate(LocalDateTime.now());
+
+        Refuel refuelB = new Refuel();
+        refuelB.setOdometer(1500);
+        refuelB.setTotalAmount(BigDecimal.valueOf(60));
+        refuelB.setRefuelDate(LocalDateTime.now().minusDays(7));
+
+        Refuel refuelA = new Refuel();
+        refuelA.setOdometer(1000);
+        refuelA.setTotalAmount(BigDecimal.valueOf(50));
+        refuelA.setRefuelDate(LocalDateTime.now().minusDays(14));
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(3L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(190)));
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(30)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(6.0)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.of(refuelC));
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+        when(refuelRepository.findByVehicleIdOrderByOdometerDesc(10L))
+                .thenReturn(List.of(refuelC, refuelB, refuelA));
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getCostPerKm()).isEqualByComparingTo(BigDecimal.valueOf(0.11));
+    }
+
+    @Test
+    void getVehicleDashboard_comMenosDeDoisAbastecimentos_custoPorKmEhZero() {
+        Refuel singleRefuel = new Refuel();
+        singleRefuel.setOdometer(1500);
+        singleRefuel.setTotalAmount(BigDecimal.valueOf(80));
+        singleRefuel.setRefuelDate(LocalDateTime.now());
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(1L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.of(singleRefuel));
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+        when(refuelRepository.findByVehicleIdOrderByOdometerDesc(10L)).thenReturn(List.of(singleRefuel));
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getCostPerKm()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    /**
+     * Em veículos HYBRID, custo por km combina fuel + electric naturalmente,
+     * pois usa todos os refuels do veículo (independente do tipo).
+     */
+    @Test
+    void getVehicleDashboard_veiculoHibrido_custoPorKmCombinaFuelEElectric() {
+        vehicle.setEnergyType(EnergyType.HYBRID);
+
+        Refuel electricRefuel = new Refuel();
+        electricRefuel.setOdometer(2000);
+        electricRefuel.setTotalAmount(BigDecimal.valueOf(40));
+        electricRefuel.setRefuelDate(LocalDateTime.now());
+        electricRefuel.setRefuelType(RefuelType.ELECTRIC);
+
+        Refuel fuelRefuel = new Refuel();
+        fuelRefuel.setOdometer(1500);
+        fuelRefuel.setTotalAmount(BigDecimal.valueOf(60));
+        fuelRefuel.setRefuelDate(LocalDateTime.now().minusDays(7));
+        fuelRefuel.setRefuelType(RefuelType.FUEL);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(2L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L))
+                .thenReturn(Optional.of(BigDecimal.valueOf(100)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findByVehicleIdOrderByOdometerDesc(10L))
+                .thenReturn(List.of(electricRefuel, fuelRefuel));
+
+        when(refuelRepository.getTotalEnergyByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(Optional.empty());
+        when(refuelRepository.getTotalSpentByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(Optional.empty());
+        when(refuelRepository.getAveragePricePerUnitByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleIdAndRefuelType(10L, RefuelType.FUEL))
+                .thenReturn(List.of());
+
+        when(refuelRepository.getTotalEnergyByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(Optional.empty());
+        when(refuelRepository.getTotalSpentByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(Optional.empty());
+        when(refuelRepository.getAveragePricePerUnitByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleIdAndRefuelType(10L, RefuelType.ELECTRIC))
+                .thenReturn(List.of());
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        // 500 km percorridos, R$40 gastos no trecho mais recente -> 40/500 = 0,08
+        assertThat(body.getCostPerKm()).isEqualByComparingTo(BigDecimal.valueOf(0.08));
+    }
+
     @Test
     void getVehicleDashboard_comApenasUmTanqueCheio_consumoEhZero() {
         Refuel singleRefuel = new Refuel();

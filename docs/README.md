@@ -46,9 +46,18 @@ flowchart TB
 - [Abastecimentos](endpoint-flows/abastecimentos.md)
 - [Eventos de Veículo](endpoint-flows/eventos-de-veiculo.md)
 - [Dashboard](endpoint-flows/dashboard.md)
+- [Auditoria](endpoint-flows/auditoria.md)
 
 ### Roadmap de Melhorias
 - [Visão geral do roadmap (bugs e débitos técnicos encontrados durante a documentação)](roadmap/README.md)
+
+## Convenção de Paginação
+
+Endpoints de listagem paginados — hoje `GET /refuels/vehicle/{vehicleId}` e `GET /vehicle-events/vehicle/{vehicleId}` — seguem a convenção padrão do Spring Data (`Pageable`/`Page<T>`):
+
+- Query params: `?page=0&size=20` (`page` 0-indexed; `size` default 20 via `@PageableDefault`). Spring também aceita `&sort=campo,asc|desc` por convenção do framework, ainda que não documentado explicitamente em cada endpoint.
+- Resposta envolvida em `PageResponseDTO<T>` (`common/PageResponseDTO.java`): `content` (lista da página atual), `page`, `size`, `totalElements`, `totalPages`.
+- `GET /vehicles` também segue essa convenção (`PageableDefault(size = 20, sort = "createdAt", direction = DESC)`). `GET /vehicles/active` retorna um único veículo (não é uma listagem) e não é paginado.
 
 ## Glossário
 

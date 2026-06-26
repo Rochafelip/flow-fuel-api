@@ -47,6 +47,9 @@ public class User {
     @Column(nullable = false, length = 32)
     private UserStatus status = UserStatus.ACTIVE;
 
+    @Column(name = "is_admin", nullable = false)
+    private boolean isAdmin = false;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 

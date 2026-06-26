@@ -108,25 +108,21 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
                             <td style="padding:32px;">
                               <h1 style="margin:0 0 16px;font-size:20px;color:#1a1a2e;">Ative sua conta</h1>
                               <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#444;">
-                                Olá%s, falta só um passo para começar a usar a FlowFuel. Clique no botão abaixo para ativar sua conta.
+                                Olá%s, falta só um passo para começar a usar a FlowFuel. Toque no código abaixo para copiá-lo e cole na tela de ativação do app.
                               </p>
-                              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;">
+                              <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
                                 <tr>
-                                  <td style="border-radius:8px;background-color:#0d6efd;">
-                                    <a href="%s" style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;">Ativar minha conta</a>
+                                  <td align="center" style="background-color:#0d6efd;border-radius:8px;padding:18px 16px;">
+                                    <span style="display:block;font-family:'Courier New',monospace;font-size:24px;font-weight:bold;letter-spacing:2px;color:#ffffff;word-break:break-all;">%s</span>
                                   </td>
                                 </tr>
                               </table>
+                              <p style="margin:0 0 16px;font-size:13px;color:#888;">
+                                Este código é válido por %s. Toque e mantenha pressionado o código para selecioná-lo e copiar.
+                              </p>
                               <p style="margin:0 0 8px;font-size:13px;color:#888;">
-                                Este link é válido por %s. Se o botão não abrir o app, cole o código abaixo na tela de ativação:
+                                Preferir abrir direto no app? <a href="%s" style="color:#0d6efd;">Ativar minha conta</a>.
                               </p>
-                              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
-                                <tr>
-                                  <td style="background-color:#f4f5f7;border:1px solid #e0e0e0;border-radius:8px;padding:12px 16px;">
-                                    <span style="font-family:'Courier New',monospace;font-size:15px;letter-spacing:0.5px;color:#1a1a2e;word-break:break-all;">%s</span>
-                                  </td>
-                                </tr>
-                              </table>
                               <p style="margin:0;font-size:13px;color:#888;">
                                 Se você não criou esta conta, pode ignorar este email com segurança.
                               </p>
@@ -143,7 +139,7 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
                   </table>
                 </body>
                 </html>"""
-                .formatted(greetingName, link, validity, activationToken);
+                .formatted(greetingName, activationToken, validity, link);
     }
 
     /** Converte o TTL em minutos numa frase amigavel: "1 hora", "2 horas", "30 minutos". */

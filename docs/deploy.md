@@ -66,6 +66,28 @@ flyctl secrets set \
 flyctl deploy
 ```
 
+### 7. Redis para rate-limiting (Upstash via Fly)
+
+O rate-limiting (bucket4j) precisa de um Redis real para operar em modo enforce — sem ele, o `RateLimitFilter` fica em fail-open (loga warning, deixa passar). Hoje produção não tem Redis provisionado.
+
+```bash
+flyctl redis create   # escolher regiao gru, plano gratuito/menor
+```
+
+O comando imprime a `REDIS_URL` de conexão. Configurar como secret (nunca em `[env]` do `fly.toml`, que é texto plano versionado):
+
+```bash
+flyctl secrets set REDIS_URL="redis://<host-upstash>:<porta>" -a flowfuel-api
+```
+
+Como o rate-limiting foi desligado no passo 5 (`FLOWFUEL_RATE_LIMIT_ENABLED=false`) por falta de Redis — e essa env var na verdade não corresponde à propriedade lida pelo código (`flowfuel.rate-limit.enabled` lê `RATE_LIMIT_ENABLED`, não `FLOWFUEL_RATE_LIMIT_ENABLED`) — esse secret nunca chegou a desligar nada de fato; o rate-limiting já estava habilitado por padrão e em fail-open por falta de Redis. Após configurar `REDIS_URL`, remover o secret órfão por clareza:
+
+```bash
+flyctl secrets unset FLOWFUEL_RATE_LIMIT_ENABLED -a flowfuel-api
+```
+
+**Validação pós-deploy**: como o filtro é fail-open, um `REDIS_URL` incorreto não gera erro visível — requisições continuam passando normalmente. Confirmar manualmente que o rate-limiting está de fato ativo fazendo requisições repetidas a um endpoint limitado (ex. `/api/v1/auth/login`) até obter `429` com header `Retry-After`.
+
 ## Problemas encontrados e correções (histórico real do primeiro deploy)
 
 1. **`fly.toml` inválido** — health check sem `type` (`http`/`tcp`). Corrigido (depois sobrescrito pelo próprio `flyctl launch`, que regenerou o arquivo num formato válido sem precisar do campo).
@@ -75,7 +97,7 @@ flyctl deploy
 
 ## Pontos de atenção / pendências
 
-- **Rate limiting está desligado em produção.** Os endpoints de auth (`/login`, `/register`, `/forgot-password`, `/resend-activation`) não têm proteção contra brute-force até que um Redis externo seja configurado e a flag seja revertida para `true`.
+- **Rate limiting está em fail-open em produção** (sem Redis provisionado, ver passo 7) — os endpoints de auth (`/login`, `/register`, `/forgot-password`, `/resend-activation`) não têm proteção contra brute-force até que o Redis do passo 7 seja provisionado e `REDIS_URL` configurada.
 - **Envio de e-mail de ativação de conta**: configurar via os secrets `MAIL_*` do passo 5 (SendGrid). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o link de ativação só vai para o log da aplicação.
 - **Senha do Postgres do Neon foi exposta em texto puro numa conversa antes de ser usada.** Recomendado resetar a senha no painel do Neon (Settings > Reset password) por precaução.
 - **Upload de foto de perfil** agora usa o próprio Postgres (tabela `stored_files`, ver `docs/superpowers/specs/2026-06-18-photo-storage-in-postgres-design.md`) — sem dependência externa de storage.

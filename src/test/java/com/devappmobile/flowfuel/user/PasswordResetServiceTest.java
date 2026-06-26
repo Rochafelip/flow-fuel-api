@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.audit.AuditAction;
+import com.devappmobile.flowfuel.audit.AuditLogService;
 import com.devappmobile.flowfuel.common.error.AppException;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +31,7 @@ class PasswordResetServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
     @Mock private PasswordResetNotifier notifier;
+    @Mock private AuditLogService auditLogService;
 
     @InjectMocks private PasswordResetService service;
 
@@ -120,6 +123,7 @@ class PasswordResetServiceTest {
 
         verify(userRepository).save(argThat(u -> u.getPassword().equals("hash_nova")));
         verify(refreshTokenService).revokeAllForUser(1L);
+        verify(auditLogService).record(1L, AuditAction.PASSWORD_RESET);
         assertThat(stored.isUsed()).isTrue();
     }
 
@@ -133,6 +137,7 @@ class PasswordResetServiceTest {
                 .isEqualTo(ErrorCode.AUTH_RESET_INVALID);
         verify(userRepository, never()).save(any());
         verify(refreshTokenService, never()).revokeAllForUser(any());
+        verifyNoInteractions(auditLogService);
     }
 
     @Test
@@ -146,6 +151,7 @@ class PasswordResetServiceTest {
                 .extracting(e -> ((AppException) e).getErrorCode())
                 .isEqualTo(ErrorCode.AUTH_RESET_INVALID);
         verify(userRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
     }
 
     @Test
@@ -160,6 +166,7 @@ class PasswordResetServiceTest {
                 .extracting(e -> ((AppException) e).getErrorCode())
                 .isEqualTo(ErrorCode.AUTH_RESET_INVALID);
         verify(userRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
     }
 
     @Test
@@ -168,6 +175,6 @@ class PasswordResetServiceTest {
                 .isInstanceOf(AppException.class)
                 .extracting(e -> ((AppException) e).getErrorCode())
                 .isEqualTo(ErrorCode.AUTH_RESET_INVALID);
-        verifyNoInteractions(userRepository);
+        verifyNoInteractions(userRepository, auditLogService);
     }
 }

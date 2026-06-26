@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.audit.AuditAction;
+import com.devappmobile.flowfuel.audit.AuditLogService;
 import com.devappmobile.flowfuel.common.error.AppException;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.common.security.OpaqueTokenGenerator;
@@ -25,6 +27,7 @@ class AccountActivationServiceTest {
     @Mock private ActivationTokenRepository tokenRepository;
     @Mock private AccountActivationNotifier notifier;
     @Mock private TokenIssuer tokenIssuer;
+    @Mock private AuditLogService auditLogService;
 
     @InjectMocks private AccountActivationService accountActivationService;
 
@@ -54,6 +57,7 @@ class AccountActivationServiceTest {
         assertThat(pendingUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(token.isUsed()).isTrue();
         verify(userRepository).save(pendingUser);
+        verify(auditLogService).record(pendingUser.getId(), AuditAction.ACCOUNT_ACTIVATION);
     }
 
     @Test
@@ -64,7 +68,7 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenIssuer);
+        verifyNoInteractions(tokenIssuer, auditLogService);
     }
 
     @Test
@@ -81,7 +85,7 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenIssuer);
+        verifyNoInteractions(tokenIssuer, auditLogService);
     }
 
     @Test
@@ -97,7 +101,7 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenIssuer);
+        verifyNoInteractions(tokenIssuer, auditLogService);
     }
 
     @Test
@@ -106,6 +110,6 @@ class AccountActivationServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
-        verifyNoInteractions(tokenRepository, tokenIssuer);
+        verifyNoInteractions(tokenRepository, tokenIssuer, auditLogService);
     }
 }

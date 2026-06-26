@@ -8,8 +8,23 @@
 #
 # A URL usa sslmode=disable porque o Postgres local nao tem TLS. Em producao
 # (Render) a SPRING_DATASOURCE_URL usa ?sslmode=require.
+#
+# Inclui tambem um Redis local para o rate-limiting (bucket4j). Sem ele, o
+# RateLimitFilter opera em fail-open (loga warning e deixa a requisicao
+# passar) — com o servico abaixo, passa a operar em modo enforce.
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: flowfuel-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   db:
     image: postgres:16-alpine
     container_name: flowfuel-db
@@ -34,6 +49,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
       PORT: 10000
@@ -41,6 +58,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/flowfuel?sslmode=disable
       SPRING_DATASOURCE_USERNAME: flowfuel
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-flowfuel}
+      # Redis do compose, para o rate-limiting (bucket4j) operar em modo enforce.
+      REDIS_URL: redis://redis:6379
       # OBRIGATORIO em prod (fail-fast). Defina em .env.prod.
       JWT_SECRET: ${JWT_SECRET}
       # CORS para front local (ajuste conforme necessario).

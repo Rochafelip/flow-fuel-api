@@ -1,5 +1,7 @@
 package com.devappmobile.flowfuel.user;
 
+import com.devappmobile.flowfuel.audit.AuditAction;
+import com.devappmobile.flowfuel.audit.AuditLogService;
 import com.devappmobile.flowfuel.common.error.AppException;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.common.security.OpaqueTokenGenerator;
@@ -23,6 +25,7 @@ public class AccountActivationService {
     private final ActivationTokenRepository tokenRepository;
     private final AccountActivationNotifier notifier;
     private final TokenIssuer tokenIssuer;
+    private final AuditLogService auditLogService;
 
     @Value("${flowfuel.account-activation.token-ttl-minutes:60}")
     private long tokenTtlMinutes;
@@ -60,6 +63,7 @@ public class AccountActivationService {
 
         token.setUsedAt(LocalDateTime.now());
         log.info("Conta ativada via token userId={}", user.getId());
+        auditLogService.record(user.getId(), AuditAction.ACCOUNT_ACTIVATION);
 
         return tokenIssuer.issueTokenPair(user);
     }

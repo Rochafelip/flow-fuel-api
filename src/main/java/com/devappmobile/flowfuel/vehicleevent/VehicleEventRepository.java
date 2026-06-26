@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Repository
 public interface VehicleEventRepository extends JpaRepository<VehicleEvent, Long> {
@@ -31,4 +32,22 @@ public interface VehicleEventRepository extends JpaRepository<VehicleEvent, Long
             LocalDate startDate,
             LocalDate endDate,
             Pageable pageable);
+
+    List<VehicleEvent> findByVehicleIdOrderByEventDateDescCreatedAtDescIdDesc(
+            Long vehicleId);
+
+    List<VehicleEvent> findByVehicleIdAndTypeOrderByEventDateDescCreatedAtDescIdDesc(
+            Long vehicleId,
+            VehicleEventType type);
+
+    List<VehicleEvent> findByVehicleIdAndEventDateBetweenOrderByEventDateDescCreatedAtDescIdDesc(
+            Long vehicleId,
+            LocalDate startDate,
+            LocalDate endDate);
+
+    List<VehicleEvent> findByVehicleIdAndTypeAndEventDateBetweenOrderByEventDateDescCreatedAtDescIdDesc(
+            Long vehicleId,
+            VehicleEventType type,
+            LocalDate startDate,
+            LocalDate endDate);
 }

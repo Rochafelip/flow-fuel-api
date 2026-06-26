@@ -21,6 +21,8 @@ sequenceDiagram
     Svc->>RDB: countByVehicleId
     Svc->>RDB: SUM(totalAmount) [totalSpent]
     Svc->>RDB: findTopByVehicleIdOrderByRefuelDateDesc [lastRefuelDate/lastOdometer]
+    Svc->>RDB: findByVehicleIdOrderByOdometerDesc (todos os abastecimentos)
+    Svc->>Svc: calculateCostPerKm(lista)
     alt veículo não-híbrido
         Svc->>RDB: SUM(energyAmount) / AVG(pricePerUnit)
         Svc->>RDB: findFullTankRefuelsByVehicleId (lista completa)
@@ -47,10 +49,19 @@ Fonte: `DashboardController.java:15-20`, `DashboardService.java:29-91`. Sem `@Tr
 
 A correção documentada no roadmap **M4** (fórmula reconciliada/documentada) já está aplicada no código atual (Javadoc em `DashboardService.java:119-139` reflete exatamente esse algoritmo).
 
+### Fórmula de custo por km (`calculateCostPerKm`, `DashboardService.java`)
+
+1. Carrega **todos** os abastecimentos do veículo (`findByVehicleIdOrderByOdometerDesc`) — qualquer tipo (`FUEL`/`ELECTRIC`), cheio ou parcial — ordenados por odômetro decrescente.
+2. Para cada par consecutivo (atual, anterior): `kmDriven = atual.odometer - anterior.odometer`.
+3. Soma apenas pares válidos (`kmDriven > 0`), acumulando `kmDriven` e `atual.totalAmount`.
+4. Resultado = `SUM(totalAmount) / SUM(kmDriven)`, arredondado HALF_UP, 2 casas decimais.
+5. Menos de 2 abastecimentos, ou km total zero → retorna `BigDecimal.ZERO`.
+6. Diferente de `calculateAverageConsumption`, **não filtra por `fullTank`** — todo valor pago entre dois abastecimentos custeou o trecho rodado, independente de o tanque ter ficado cheio. Para veículos HYBRID, a mesma lista (sem filtro de tipo) já produz o custo combinado fuel+electric no campo raiz `costPerKm`, sem precisar de lógica extra no `buildHybridBreakdown`.
+
 ### Quantidade de queries por requisição
 
-- Veículo não-híbrido: 5 queries escalares + 1 carga de lista completa ≈ 6 round-trips.
-- Veículo híbrido: 3 queries base + 2× (3 queries + 1 lista completa) ≈ 9 round-trips + 2 listas completas.
+- Veículo não-híbrido: 5 queries escalares + 2 cargas de lista completa (full-tank para consumo, todos os refuels para custo/km) ≈ 7 round-trips.
+- Veículo híbrido: 3 queries base + 1 carga de lista completa (custo/km) + 2× (3 queries + 1 lista completa) ≈ 10 round-trips + 3 listas completas.
 
 **Atenção — M5 parcialmente implementado:** a infraestrutura otimizada (`RefuelAggregateProjection`, `getAggregatesByVehicleId(AndRefuelType)`, buscadores paginados de tanque-cheio em `RefuelRepository.java:85-109`) **já existe no repositório**, mas `DashboardService` ainda usa o caminho antigo de N queries + carregamento de lista completa — o código novo está presente e não está conectado. `docs/roadmap/phase-2/M5-optimize-dashboard-service.md` ainda lista o item como pendente, o que é consistente com o estado real do código. `[descoberto na Fase 4 — confirma que M5 não foi finalizado, apesar de scaffolding já existir]`
 
@@ -68,6 +79,6 @@ Endpoint somente leitura — nenhum efeito colateral (sem escrita, evento, cache
 
 ## Pontos de Atenção
 
-- A otimização do roadmap **M5** está apenas parcialmente implementada: queries/projeções agregadas já existem no repositório mas não são usadas pelo `DashboardService`, que continua fazendo até 9 round-trips + 2 cargas completas de lista para veículos híbridos. `[descoberto na Fase 4]`
+- A otimização do roadmap **M5** está apenas parcialmente implementada: queries/projeções agregadas já existem no repositório mas não são usadas pelo `DashboardService`, que continua fazendo até 10 round-trips + 3 cargas completas de lista para veículos híbridos (a nova query de `costPerKm` carrega todos os abastecimentos do veículo, agravando o problema). `[descoberto na Fase 4; carga adicional confirmada ao implementar costPerKm]`
 - `vehicleId` inválido no path (não numérico) não tem handler dedicado para `MethodArgumentTypeMismatchException` e retorna `500` em vez de `400` — mesmo padrão de gap observado em Veículos/Abastecimentos/Eventos. `[descoberto na Fase 4 — gap recorrente em todo o sistema]`
 - Sem `@Transactional` no endpoint: múltiplas leituras sequenciais sobre o mesmo veículo não são isoladas entre si. `[INFERIDO — risco teórico, não confirmado como problema real]`
