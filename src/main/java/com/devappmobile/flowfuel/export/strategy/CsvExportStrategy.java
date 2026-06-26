@@ -47,24 +47,9 @@ public class CsvExportStrategy implements ExportStrategy {
         if (field == null) {
             return "";
         }
-
-        // Check if field needs escaping
-        boolean needsEscaping = field.contains("\"") || field.contains("\n");
-
-        // Only escape commas if the field contains non-numeric characters
-        // This allows numeric values like "150,00" to pass through without quotes
-        if (field.contains(",") && !isNumericField(field)) {
-            needsEscaping = true;
-        }
-
-        if (needsEscaping) {
+        if (field.contains(",") || field.contains("\"") || field.contains("\n")) {
             return "\"" + field.replace("\"", "\"\"") + "\"";
         }
         return field;
-    }
-
-    private boolean isNumericField(String field) {
-        // A numeric field contains only digits, commas, dots, and optional leading minus/plus
-        return field.matches("^[-+]?[0-9]+([.,][0-9]+)*$");
     }
 }
