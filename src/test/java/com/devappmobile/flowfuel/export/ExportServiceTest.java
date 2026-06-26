@@ -11,7 +11,9 @@ import com.devappmobile.flowfuel.refuel.RefuelType;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEvent;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -139,6 +141,63 @@ class ExportServiceTest {
     void exportRefuels_startDateDepoisDeEndDate_lancaExportValidationException() {
         assertThatThrownBy(() -> exportService.exportRefuels(
                 owner, 10L, LocalDate.of(2026, 12, 31), LocalDate.of(2026, 1, 1), "csv"))
+                .isInstanceOf(ExportValidationException.class);
+    }
+
+    private VehicleEvent buildEvent(VehicleEventType type, LocalDate date, double amount, String description) {
+        VehicleEvent event = new VehicleEvent();
+        event.setVehicle(vehicle);
+        event.setType(type);
+        event.setEventDate(date);
+        event.setAmount(BigDecimal.valueOf(amount));
+        event.setDescription(description);
+        event.setOdometer(2000);
+        return event;
+    }
+
+    @Test
+    void exportEvents_semFiltro_geraCsvComTodosOsEventos() {
+        when(vehicleEventRepository.findByVehicleIdOrderByEventDateDescCreatedAtDescIdDesc(10L))
+                .thenReturn(List.of(buildEvent(VehicleEventType.MAINTENANCE,
+                        LocalDate.of(2026, 6, 1), 150.0, "Troca de óleo")));
+
+        ExportResult result = exportService.exportEvents(owner, 10L, null, null, null, "csv");
+
+        String content = new String(result.content());
+        assertThat(content).contains("Data,Tipo,Descrição,Valor,Odômetro");
+        assertThat(content).contains("01/06/2026,MAINTENANCE,Troca de óleo,150.0,2000");
+    }
+
+    @Test
+    void exportEvents_comTipo_usaQueryFiltradaPorTipo() {
+        when(vehicleEventRepository.findByVehicleIdAndTypeOrderByEventDateDescCreatedAtDescIdDesc(
+                10L, VehicleEventType.CAR_WASH))
+                .thenReturn(List.of(buildEvent(VehicleEventType.CAR_WASH,
+                        LocalDate.of(2026, 5, 1), 40.0, "Lavagem completa")));
+
+        ExportResult result = exportService.exportEvents(
+                owner, 10L, VehicleEventType.CAR_WASH, null, null, "csv");
+
+        assertThat(new String(result.content())).contains("CAR_WASH");
+    }
+
+    @Test
+    void exportEvents_comTipoEPeriodo_usaQueryFiltradaPorTipoEPeriodo() {
+        when(vehicleEventRepository.findByVehicleIdAndTypeAndEventDateBetweenOrderByEventDateDescCreatedAtDescIdDesc(
+                10L, VehicleEventType.MAINTENANCE, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31)))
+                .thenReturn(List.of(buildEvent(VehicleEventType.MAINTENANCE,
+                        LocalDate.of(2026, 6, 1), 150.0, "Revisão")));
+
+        ExportResult result = exportService.exportEvents(owner, 10L, VehicleEventType.MAINTENANCE,
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), "xlsx");
+
+        assertThat(result.fileName()).endsWith(".xlsx");
+    }
+
+    @Test
+    void exportEvents_apenasEndDateInformada_lancaExportValidationException() {
+        assertThatThrownBy(() -> exportService.exportEvents(
+                owner, 10L, null, null, LocalDate.of(2026, 1, 1), "csv"))
                 .isInstanceOf(ExportValidationException.class);
     }
 }

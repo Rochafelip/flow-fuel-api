@@ -9,7 +9,9 @@ import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEvent;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventType;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -26,6 +28,9 @@ public class ExportService {
 
     private static final String[] REFUEL_HEADERS =
             {"Data", "Combustível", "Litros/kWh", "Preço/unidade", "Total", "Odômetro"};
+
+    private static final String[] EVENT_HEADERS =
+            {"Data", "Tipo", "Descrição", "Valor", "Odômetro"};
 
     private final RefuelRepository refuelRepository;
     private final VehicleEventRepository vehicleEventRepository;
@@ -82,6 +87,47 @@ public class ExportService {
                 refuel.getPricePerUnit().toPlainString(),
                 refuel.getTotalAmount().toPlainString(),
                 String.valueOf(refuel.getOdometer())
+        };
+    }
+
+    public ExportResult exportEvents(User user, Long vehicleId, VehicleEventType type,
+            LocalDate startDate, LocalDate endDate, String formatParam) {
+        ExportFormat format = parseFormat(formatParam);
+        validateDateRange(startDate, endDate);
+
+        Vehicle vehicle = findOwnedVehicle(user, vehicleId);
+
+        List<VehicleEvent> events;
+        if (type != null && startDate != null && endDate != null) {
+            events = vehicleEventRepository
+                    .findByVehicleIdAndTypeAndEventDateBetweenOrderByEventDateDescCreatedAtDescIdDesc(
+                            vehicleId, type, startDate, endDate);
+        } else if (type != null) {
+            events = vehicleEventRepository
+                    .findByVehicleIdAndTypeOrderByEventDateDescCreatedAtDescIdDesc(vehicleId, type);
+        } else if (startDate != null && endDate != null) {
+            events = vehicleEventRepository
+                    .findByVehicleIdAndEventDateBetweenOrderByEventDateDescCreatedAtDescIdDesc(
+                            vehicleId, startDate, endDate);
+        } else {
+            events = vehicleEventRepository
+                    .findByVehicleIdOrderByEventDateDescCreatedAtDescIdDesc(vehicleId);
+        }
+
+        List<String[]> rows = events.stream().map(this::toRow).toList();
+        byte[] content = strategiesByFormat.get(format).export(EVENT_HEADERS, rows);
+        String fileName = ExportFileNameBuilder.build("events", vehicle, format);
+
+        return new ExportResult(content, fileName, contentTypeFor(format));
+    }
+
+    private String[] toRow(VehicleEvent event) {
+        return new String[]{
+                event.getEventDate().format(DATE_FORMAT),
+                event.getType().name(),
+                event.getDescription() != null ? event.getDescription() : "",
+                event.getAmount().toPlainString(),
+                event.getOdometer() != null ? String.valueOf(event.getOdometer()) : ""
         };
     }
 
