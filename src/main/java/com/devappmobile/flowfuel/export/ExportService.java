@@ -33,6 +33,8 @@ public class ExportService {
     private final AuthorizationHelper authorizationHelper;
     private final Map<ExportFormat, ExportStrategy> strategiesByFormat;
 
+    // Constructor is explicit (not @RequiredArgsConstructor) because strategiesByFormat
+    // is derived from the injected strategies list, not a plain field assignment.
     public ExportService(RefuelRepository refuelRepository,
             VehicleEventRepository vehicleEventRepository,
             VehicleRepository vehicleRepository,
@@ -43,7 +45,11 @@ public class ExportService {
         this.vehicleRepository = vehicleRepository;
         this.authorizationHelper = authorizationHelper;
         this.strategiesByFormat = strategies.stream()
-                .collect(Collectors.toMap(ExportStrategy::supportedFormat, Function.identity()));
+                .collect(Collectors.toMap(ExportStrategy::supportedFormat, Function.identity(), (a, b) -> {
+                    throw new IllegalStateException(
+                            "Múltiplas estratégias de exportação registradas para o mesmo formato: "
+                                    + a.supportedFormat());
+                }));
     }
 
     public ExportResult exportRefuels(User user, Long vehicleId, LocalDate startDate, LocalDate endDate,
