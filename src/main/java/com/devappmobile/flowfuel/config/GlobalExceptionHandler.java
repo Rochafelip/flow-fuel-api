@@ -3,6 +3,7 @@ package com.devappmobile.flowfuel.config;
 import com.devappmobile.flowfuel.common.error.AppException;
 import com.devappmobile.flowfuel.common.error.ErrorCode;
 import com.devappmobile.flowfuel.common.error.RequestIdFilter;
+import com.devappmobile.flowfuel.exception.RateLimitExceededException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -36,6 +37,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /** URI base dos tipos de erro. Apontara para uma pagina de catalogo no futuro. */
     private static final String ERROR_TYPE_BASE = "https://flowfuel.app/errors/";
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ProblemDetail> handleRateLimitExceeded(RateLimitExceededException ex,
+            HttpServletRequest req) {
+        logClientError(ex.getErrorCode(), req, ex.getMessage());
+        ProblemDetail pd = problemDetail(ex.getErrorCode(), ex.getMessage(), req.getRequestURI());
+        return ResponseEntity.status(ex.getErrorCode().status())
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(ex.getRetryAfterSeconds()))
+                .body(pd);
+    }
 
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ProblemDetail> handleAppException(AppException ex, HttpServletRequest req) {

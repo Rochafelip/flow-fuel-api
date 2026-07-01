@@ -38,6 +38,9 @@ public enum ErrorCode {
     // 429 — excesso de requisicoes
     RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "Limite de requisições excedido"),
 
+    // 503 — dependencia externa indisponivel
+    EXTERNAL_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Serviço externo indisponível"),
+
     // 500 — generico
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno");
 
