@@ -16,7 +16,10 @@ import java.util.Objects;
 
 /**
  * Cliente da Open Charge Map API para busca de estacoes de recarga eletrica.
- * Header X-API-Key e opcional: funciona sem ela, com rate limit mais baixo.
+ * Header X-API-Key: a API atualmente exige essa key em toda chamada (403
+ * sem ela), diferente do assumido no design original. Sem
+ * OPEN_CHARGE_MAP_API_KEY configurada, toda chamada falha e nenhum
+ * resultado ELECTRIC aparece (fail-partial, nao derruba o endpoint).
  * Ver docs/superpowers/specs/2026-07-01-postos-proximos-backend-design.md.
  */
 @Component

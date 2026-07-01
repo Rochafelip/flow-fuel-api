@@ -2,14 +2,9 @@
 #
 # Fluxo:
 #   - PR para main/staging  -> build + testes (gate de merge)
-#   - push para staging     -> deploy automatico no Render (ambiente staging)
-#   - push para main        -> deploy com aprovacao manual (environment protection)
+#   - push para main/staging -> build + testes
 #
-# Os deploys disparam Deploy Hooks do Render guardados nos secrets do GitHub:
-#   - RENDER_DEPLOY_HOOK_STAGING
-#   - RENDER_DEPLOY_HOOK_PROD
-# A aprovacao manual de producao e configurada em
-# Settings > Environments > production (required reviewers).
+# Deploy de producao roda em workflow separado (fly-deploy.yml), via Fly.io.
 name: CI/CD
 
 on:
@@ -42,28 +37,3 @@ jobs:
       # entao nao e preciso subir banco no CI.
       - name: Build & test
         run: ./mvnw -B clean verify
-
-  deploy-staging:
-    name: Deploy staging
-    needs: build-and-test
-    # So em push direto para staging (nao em PR).
-    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - name: Trigger Render deploy (staging)
-        run: |
-          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_STAGING }}"
-
-  deploy-production:
-    name: Deploy production
-    needs: build-and-test
-    # So em push direto para main (nao em PR).
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    # Aprovacao manual: configure required reviewers neste environment.
-    environment: production
-    steps:
-      - name: Trigger Render deploy (production)
-        run: |
-          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_PROD }}"

@@ -13,11 +13,26 @@ porque o endpoint não existe. Esta é a implementação desse endpoint.
 **Revisado em 2026-07-01:** a primeira versão deste spec desenhava a
 integração em cima do Google Places API (New). Decisão trocada para evitar
 custo recorrente e a necessidade de billing/cartão no Google Cloud só para
-um MVP — o backend agora combina duas fontes de dados **gratuitas e sem
-key obrigatória**: OpenStreetMap (via Overpass API) para postos de
-combustível, e Open Charge Map para estações de recarga elétrica. Trade-off
-aceito: sem `rating` confiável e cobertura de dados menor que a base
-comercial do Google (ok para o escopo do MVP).
+um MVP — o backend agora combina duas fontes de dados **gratuitas**:
+OpenStreetMap (via Overpass API) para postos de combustível, e Open Charge
+Map para estações de recarga elétrica. Trade-off aceito: sem `rating`
+confiável e cobertura de dados menor que a base comercial do Google (ok
+para o escopo do MVP).
+
+**Revisado em 2026-07-01 (2ª vez), pós-implementação:** teste manual contra
+os servidores reais (fora dos testes automatizados, que usam
+`MockRestServiceServer`) mostrou que a Open Charge Map **passou a exigir
+API key em toda chamada** (`403 Forbidden: "You must specify an API key
+using the key query parameter or x-api-key header."`), não apenas para
+aumentar o rate limit como assumido originalmente neste spec e replicado
+no comentário Javadoc de `OpenChargeMapClient`. Overpass continua sem key
+obrigatória e foi validado retornando dados reais de postos de
+combustível (com timeouts 504 ocasionais — instância pública sobrecarregada,
+ver seção de Riscos). Efeito prático: **sem `OPEN_CHARGE_MAP_API_KEY`
+configurada, `type: ELECTRIC` nunca aparece nos resultados** — o endpoint
+continua funcionando normalmente (200 só com postos de combustível via
+Overpass), já que a falha da OCM é tratada como fonte parcial indisponível,
+não como erro. Ver seção "Provisionamento" atualizada abaixo.
 
 Decisão de segurança mantida do lado Android: nenhuma chamada a serviço
 externo é feita pelo app — tudo passa pelo endpoint próprio, mesmo as
@@ -97,9 +112,14 @@ ways/relations).
 
 **Chamada à Open Charge Map API (recarga elétrica):**
 `GET https://api.openchargemap.io/v3/poi?latitude={lat}&longitude={lng}&distance={radiusKm}&distanceunit=KM&maxresults=20`,
-header `X-API-Key` **opcional** (aumenta rate limit; sem ela a API ainda
-funciona, com limite mais baixo). Resposta traz `ID`, `AddressInfo.Title`,
-`AddressInfo.Latitude/Longitude`.
+header `X-API-Key`. **Correção pós-implementação (2026-07-01):** ao contrário
+do assumido originalmente, a API hoje **exige** essa key em toda chamada —
+sem ela retorna `403 Forbidden`, não um rate limit reduzido. O código
+(`OpenChargeMapClient`) já trata isso corretamente como falha de fonte
+(fail-partial, não fail-total — ver `ErrorCode.EXTERNAL_SERVICE_UNAVAILABLE`
+abaixo), então a ausência da key não derruba o endpoint, só zera os
+resultados `type: ELECTRIC`. Resposta (quando a key está presente) traz
+`ID`, `AddressInfo.Title`, `AddressInfo.Latitude/Longitude`.
 
 As duas chamadas são feitas sequencialmente (Overpass primeiro, depois
 Open Charge Map) e os resultados mesclados numa única lista — mesma
@@ -189,13 +209,18 @@ falharem.
 
 ## Provisionamento (pré-requisito, fora do código)
 
-1. Nenhum cadastro obrigatório: Overpass API é pública e não exige key;
-   Open Charge Map funciona sem key (com rate limit mais baixo).
-2. Opcional — registrar conta gratuita em openchargemap.org para gerar uma
-   API key e aumentar o rate limit da Open Charge Map. Se gerada, configurar
-   como variável de ambiente `OPEN_CHARGE_MAP_API_KEY` (opcional: aplicação
-   sobe normalmente sem ela, diferente do padrão de secret obrigatório
-   usado em `jwt.secret=${JWT_SECRET}`).
+1. Overpass API é pública e não exige key — nenhum cadastro necessário para
+   postos de combustível.
+2. **Open Charge Map exige key (correção pós-implementação, 2026-07-01
+   — ver seção "Arquitetura" acima):** registrar conta gratuita em
+   openchargemap.org, gerar uma API key e configurar como variável de
+   ambiente `OPEN_CHARGE_MAP_API_KEY`. A aplicação continua subindo e o
+   endpoint continua respondendo 200 sem essa variável (`@Value(...:"")`,
+   igual ao design original), mas **sem ela nenhuma estação `ELECTRIC`
+   aparece nos resultados** — na prática, hoje é obrigatória para a feature
+   funcionar por completo em produção, mesmo não sendo obrigatória para o
+   processo subir (diferente do padrão de secret bloqueante usado em
+   `jwt.secret=${JWT_SECRET}`).
 3. Nenhuma conta de billing/cartão de crédito é necessária — diferença
    central em relação à versão anterior deste spec (Google Places).
 4. Antes de tráfego de produção real, avaliar se vale rodar uma instância
@@ -205,6 +230,11 @@ falharem.
 
 ## Riscos / Pontos de atenção
 
+- **Open Charge Map exige key (descoberto pós-implementação, não estava no
+  design original):** sem `OPEN_CHARGE_MAP_API_KEY` configurada em
+  produção, toda chamada à OCM falha com 403 e o endpoint silenciosamente
+  nunca retorna `type: ELECTRIC` — sem erro visível para o usuário nem
+  alerta, só ausência de dados. Gerar a key é gratuito; ver "Provisionamento".
 - **Fair-use dos servidores públicos, não custo:** Overpass e Open Charge
   Map são gratuitas, mas sem SLA — uso muito acima do esperado pode gerar
   throttling/bloqueio temporário de IP no Overpass público. Cache e rate
