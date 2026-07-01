@@ -10,20 +10,32 @@ usuário (spec e plano no repositório `flowfuel-app`:
 pronto e integrado contra o contrato abaixo — hoje ele recebe erro de rede
 porque o endpoint não existe. Esta é a implementação desse endpoint.
 
-Decisão de segurança já tomada no lado Android: a API key do Google Places
-**nunca** fica no app — o backend proxeia a chamada ao Google e guarda a
-key só no servidor.
+**Revisado em 2026-07-01:** a primeira versão deste spec desenhava a
+integração em cima do Google Places API (New). Decisão trocada para evitar
+custo recorrente e a necessidade de billing/cartão no Google Cloud só para
+um MVP — o backend agora combina duas fontes de dados **gratuitas e sem
+key obrigatória**: OpenStreetMap (via Overpass API) para postos de
+combustível, e Open Charge Map para estações de recarga elétrica. Trade-off
+aceito: sem `rating` confiável e cobertura de dados menor que a base
+comercial do Google (ok para o escopo do MVP).
+
+Decisão de segurança mantida do lado Android: nenhuma chamada a serviço
+externo é feita pelo app — tudo passa pelo endpoint próprio, mesmo as
+fontes sendo públicas, para manter o app desacoplado do provider de dados
+(trocar de fonte no futuro não exige alterar o app).
 
 ## Objetivo
 
 Implementar `GET /api/v1/stations/nearby` retornando postos de combustível
-e estações de recarga elétrica próximos de um ponto, combinando duas
-buscas no Google Places API (New), com cache e rate limiting para conter o
-custo por chamada paga ao Google.
+e estações de recarga elétrica próximos de um ponto, combinando uma busca
+na Overpass API (OpenStreetMap) e uma na Open Charge Map API, com cache e
+rate limiting para proteger os servidores públicos dessas fontes de uso
+excessivo (não por custo — ambas são gratuitas).
 
 ## Fora de escopo
 
-- Preço de combustível (Google Places não fornece; ver spec do Android).
+- Preço de combustível (nenhuma das duas fontes fornece; ver spec do
+  Android).
 - "Ver detalhes" do posto (endpoint de detalhes do place).
 - Persistência em Postgres dos resultados — cache é só Redis, efêmero.
 - Cache de segundo nível / Spring Cache abstraction (`@Cacheable`) — essa
@@ -43,7 +55,7 @@ Autenticação: obrigatória (Bearer JWT, como todo o resto da API)
   "name": "string",
   "type": "FUEL" | "ELECTRIC",
   "distanceMeters": 420,
-  "rating": 4.6,           // nullable
+  "rating": null,          // nullable — OSM/Open Charge Map raramente têm nota
   "latitude": -8.05,
   "longitude": -34.90
 }
@@ -51,42 +63,64 @@ Autenticação: obrigatória (Bearer JWT, como todo o resto da API)
 400 — lat/lng ausentes ou fora de faixa (-90..90 / -180..180)   → VALIDATION_FAILED
 401 — sem token / token inválido                                → AUTH_* (padrão existente)
 429 — rate limit por usuário excedido                            → RATE_LIMIT_EXCEEDED
-503 — falha ao chamar o Google Places (timeout, erro HTTP, key inválida) → EXTERNAL_SERVICE_UNAVAILABLE (novo)
+503 — falha ao chamar Overpass ou Open Charge Map (timeout, erro HTTP) → EXTERNAL_SERVICE_UNAVAILABLE (novo)
 ```
+
+`placeId` passa a ser prefixado pela origem, já que agora há duas fontes
+distintas: `osm:{type}/{id}` (ex.: `osm:node/123456789`) para postos de
+combustível, `ocm:{id}` para estações de recarga.
 
 ## Arquitetura
 
 Segue o padrão "package por feature" já usado em `vehicle`, `vehicleevent`
 etc.: novo pacote `com.devappmobile.flowfuel.station` com
-`StationController` → `StationService` → `PlacesClient`.
+`StationController` → `StationService` → `OverpassClient` +
+`OpenChargeMapClient`.
 
 **Por que RestClient, não WebClient:** a aplicação usa
 `spring-boot-starter-web` (MVC síncrono), sem `spring-boot-starter-webflux`.
 `RestClient` (Spring 6.1+, incluso no Boot 3.5.7 já usado no projeto) é a
 opção síncrona idiomática, sem dependência nova.
 
-**Chamada ao Google Places (New):**
-`POST https://places.googleapis.com/v1/places:searchNearby`, headers
-`X-Goog-Api-Key` e `X-Goog-FieldMask: places.id,places.displayName,places.location,places.rating`
-(field mask restrito ao tier "Pro" — evita puxar campos caros como fotos
-e horário de funcionamento, que subiriam o custo por chamada).
+**Chamada à Overpass API (postos de combustível):**
+`POST https://overpass-api.de/api/interpreter`, corpo em Overpass QL:
 
-Duas chamadas sequenciais — uma com `includedTypes: ["gas_station"]`,
-outra com `includedTypes: ["electric_vehicle_charging_station"]` — merge
-das duas listas. Sequencial em vez de paralelo (`CompletableFuture`) por
-simplicidade; latência combinada (~200-400ms por chamada) é aceitável dado
-que a tela já mostra skeleton de loading.
+```
+[out:json][timeout:10];
+nwr(around:{radius},{lat},{lng})[amenity=fuel];
+out center;
+```
 
-**Distância:** Places API (New) não devolve distância pronta. Calculada
-no backend via fórmula de Haversine, usando `lat`/`lng` da query (posição
-do usuário) e o `location` de cada place retornado.
+Sem autenticação/key. Resposta traz elementos OSM (`node`/`way`/`relation`)
+com `tags.name` e coordenadas (`lat`/`lon` direto em nós, ou `center` em
+ways/relations).
+
+**Chamada à Open Charge Map API (recarga elétrica):**
+`GET https://api.openchargemap.io/v3/poi?latitude={lat}&longitude={lng}&distance={radiusKm}&distanceunit=KM&maxresults=20`,
+header `X-API-Key` **opcional** (aumenta rate limit; sem ela a API ainda
+funciona, com limite mais baixo). Resposta traz `ID`, `AddressInfo.Title`,
+`AddressInfo.Latitude/Longitude`.
+
+As duas chamadas são feitas sequencialmente (Overpass primeiro, depois
+Open Charge Map) e os resultados mesclados numa única lista — mesma
+simplicidade da versão anterior do design; latência combinada aceitável
+dado que a tela já mostra skeleton de loading.
+
+**Distância:** nem Overpass nem Open Charge Map devolvem distância no
+formato que o app espera de forma consistente entre as duas fontes.
+Calculada no backend via fórmula de Haversine, usando `lat`/`lng` da query
+(posição do usuário) e a coordenada de cada resultado, para os dois casos —
+mantém a lógica uniforme independente da fonte.
 
 **Novo ErrorCode:**
 `EXTERNAL_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Serviço externo indisponível")`
-em `common/error/ErrorCode.java`, usado quando a chamada ao Google Places
-falha (timeout, HTTP 4xx/5xx do Google, key inválida/sem billing) — mapeado
-para 503, distinto de `INTERNAL_ERROR` para deixar claro em logs/Sentry
-que a causa é uma dependência externa.
+em `common/error/ErrorCode.java`, usado quando a chamada à Overpass ou à
+Open Charge Map falha (timeout, HTTP 4xx/5xx) — mapeado para 503, distinto
+de `INTERNAL_ERROR` para deixar claro em logs/Sentry que a causa é uma
+dependência externa. Falha de uma das duas fontes não derruba a outra: se
+Overpass falhar mas Open Charge Map responder (ou vice-versa), retorna 200
+só com os resultados da fonte que funcionou; só retorna 503 se as duas
+falharem.
 
 ## Cache (Redis)
 
@@ -104,8 +138,13 @@ que a causa é uma dependência externa.
   geográfica, não por `userId` — não há dado por-usuário para vazar entre
   usuários diferentes.
 - **Fail-open:** Redis indisponível → cache miss silencioso (loga warning),
-  segue direto para o Google Places. Mesma filosofia do `RateLimitFilter`
-  existente.
+  segue direto para Overpass/Open Charge Map. Mesma filosofia do
+  `RateLimitFilter` existente.
+- **Por que o cache continua existindo mesmo sem custo por chamada:**
+  Overpass e Open Charge Map são gratuitas, mas os servidores públicos têm
+  política de uso justo e podem throttlar/bloquear IPs com volume alto —
+  o cache reduz a chance de bater nesse limite, não é sobre economizar
+  dinheiro.
 
 ## Rate limiting (Bucket4j, por usuário)
 
@@ -120,18 +159,25 @@ que a causa é uma dependência externa.
   novo — reaproveita o bean `ProxyManager<String>` (`LettuceBasedProxyManager`)
   já configurado em `RateLimitingConfig`, só com prefixo de chave
   diferente: `station-rate-limit::{userId}`. `tryConsume(1)` antes de
-  bater no cache/Places; estourou → lança `AppException(ErrorCode.RATE_LIMIT_EXCEEDED)`
-  (mesmo padrão de erro 429 + `Retry-After` já usado nos endpoints de auth).
+  bater no cache/Overpass/Open Charge Map; estourou → lança
+  `AppException(ErrorCode.RATE_LIMIT_EXCEEDED)` (mesmo padrão de erro 429 +
+  `Retry-After` já usado nos endpoints de auth).
 - **Fail-open** também aqui se o Redis cair — não bloqueia o usuário por
   causa de infraestrutura.
+- **Por quê manter o rate limit sem custo por chamada:** protege os
+  servidores públicos do Overpass (fair-use policy) e o limite de
+  requisições do Open Charge Map contra abuso vindo do nosso backend, não
+  evita gasto financeiro.
 
 ## Plano de testes
 
-- **Unitário — `StationService`:** `RestClient` mockado — merge de fuel +
-  electric, cálculo de Haversine, ordenação por distância, fallback
-  (`EXTERNAL_SERVICE_UNAVAILABLE`) quando o Google retorna erro/timeout.
+- **Unitário — `StationService`:** `RestClient` mockado (`OverpassClient` e
+  `OpenChargeMapClient`) — merge de fuel + electric, cálculo de Haversine,
+  ordenação por distância, fallback parcial (uma fonte falha, a outra
+  responde → 200 só com o que funcionou) e fallback total
+  (`EXTERNAL_SERVICE_UNAVAILABLE`) quando as duas falham.
 - **Unitário — cache:** segunda chamada com o mesmo lat/lng arredondado não
-  bate no `RestClient` (`Mockito.verify(..., times(1))` após duas chamadas
+  bate nos clients (`Mockito.verify(..., times(1))` após duas chamadas
   ao service).
 - **Unitário — rate limit:** 11ª chamada no mesmo minuto (mesmo `userId`)
   lança `AppException` com `ErrorCode.RATE_LIMIT_EXCEEDED`.
@@ -143,34 +189,37 @@ que a causa é uma dependência externa.
 
 ## Provisionamento (pré-requisito, fora do código)
 
-1. Criar projeto no Google Cloud Console, habilitar billing.
-2. Habilitar "Places API (New)".
-3. Gerar API key, restringir por IP do servidor (chamada é server-to-server,
-   não do app — restrição por IP é mais apropriada que por app/bundle ID).
-4. Configurar `GOOGLE_PLACES_API_KEY` como variável de ambiente — segue o
-   padrão de secret obrigatório sem fallback já usado (`jwt.secret=${JWT_SECRET}`,
-   sem default): sem a env var, a aplicação não sobe.
-5. Em dev/testes, os testes unitários (Places mockado) passam sem a key
-   configurada; o endpoint real (`curl`/app apontando pro backend local)
-   retornará 503 até alguém configurar a key.
+1. Nenhum cadastro obrigatório: Overpass API é pública e não exige key;
+   Open Charge Map funciona sem key (com rate limit mais baixo).
+2. Opcional — registrar conta gratuita em openchargemap.org para gerar uma
+   API key e aumentar o rate limit da Open Charge Map. Se gerada, configurar
+   como variável de ambiente `OPEN_CHARGE_MAP_API_KEY` (opcional: aplicação
+   sobe normalmente sem ela, diferente do padrão de secret obrigatório
+   usado em `jwt.secret=${JWT_SECRET}`).
+3. Nenhuma conta de billing/cartão de crédito é necessária — diferença
+   central em relação à versão anterior deste spec (Google Places).
+4. Antes de tráfego de produção real, avaliar se vale rodar uma instância
+   própria do Overpass (imagem Docker oficial) em vez de depender só do
+   servidor público `overpass-api.de`, para não ficar sujeito ao fair-use
+   compartilhado.
 
 ## Riscos / Pontos de atenção
 
-- **Custo do Google Places:** mesmo com cache e rate limit, cada combinação
-  nova de região gera 2 chamadas pagas (fuel + electric). Se o app tiver
-  tração, vale revisitar o TTL do cache (10min pode ser curto/longo demais
-  dependendo do volume real) e considerar um raio de bucket maior que 3
-  casas decimais.
-- **Field mask do Places (New):** o tier de billing (Essentials/Pro/Enterprise)
-  depende exatamente dos campos pedidos no `X-Goog-FieldMask`. `rating`
-  entra no tier "Pro", mais caro que "Essentials IDs Only". Se o custo for
-  um problema, dá para reavaliar se vale manter `rating` no MVP.
-  `[INFERIDO — confirmar preço exato na tabela de billing do Google antes
-  de estimar custo real]`.
+- **Fair-use dos servidores públicos, não custo:** Overpass e Open Charge
+  Map são gratuitas, mas sem SLA — uso muito acima do esperado pode gerar
+  throttling/bloqueio temporário de IP no Overpass público. Cache e rate
+  limit mitigam isso; se o app tiver tração, revisitar TTL do cache e
+  considerar instância própria do Overpass.
+- **Qualidade/cobertura de dados:** OSM é colaborativo — cobertura de
+  postos pode ter buracos em cidades menores, comparado à base comercial
+  do Google. `Empty` state do app já cobre esse caso.
+- **Sem `rating` confiável:** nem OSM nem Open Charge Map têm nota
+  equivalente à do Google Places — campo fica `null` na quase totalidade
+  dos resultados, o app já trata isso como opcional.
 - **Sem persistência:** se o Redis for perdido (restart, falha), o cache
-  zera e a próxima rodada de requisições gera chamadas pagas de novo — é o
-  trade-off aceito ao não persistir em Postgres.
-- **Places API (New) é relativamente recente:** vale confirmar que
-  `electric_vehicle_charging_station` é um `includedType` válido na
-  documentação atual do Google antes de implementar — nomes de tipo já
-  mudaram entre versões da API no passado.
+  zera e a próxima rodada de requisições bate direto nos servidores
+  públicos de novo — trade-off aceito ao não persistir em Postgres.
+- **Formato de resposta da Overpass:** `way`/`relation` não trazem
+  `lat`/`lon` diretos, só via `out center` — confirmar que o parser trata
+  os três tipos de elemento (`node`, `way`, `relation`) antes de assumir
+  que todo resultado tem coordenada direta.
