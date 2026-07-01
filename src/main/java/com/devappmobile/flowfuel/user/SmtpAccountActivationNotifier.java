@@ -88,42 +88,44 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
         return """
                 <!DOCTYPE html>
                 <html lang="pt-BR">
-                <body style="margin:0;padding:0;background-color:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
-                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7;padding:32px 0;">
+                <body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="padding:48px 16px;">
                     <tr>
                       <td align="center">
-                        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
+                        <table role="presentation" width="420" cellpadding="0" cellspacing="0">
                           <tr>
-                            <td style="background-color:#0d6efd;padding:24px 32px;">
-                              <span style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:0.5px;">FlowFuel</span>
+                            <td style="padding-bottom:32px;">
+                              <span style="font-size:18px;font-weight:700;color:#111;">FlowFuel</span>
                             </td>
                           </tr>
                           <tr>
-                            <td style="padding:32px;">
-                              <h1 style="margin:0 0 8px;font-size:20px;color:#1a1a2e;">Ative sua conta</h1>
-                              <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444;">
-                                Olá%s, copie o código abaixo e cole na tela de ativação do app.
+                            <td style="padding-bottom:8px;">
+                              <p style="margin:0;font-size:22px;font-weight:600;color:#111;line-height:1.3;">Ative sua conta%s</p>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding-bottom:32px;">
+                              <p style="margin:0;font-size:15px;color:#555;line-height:1.6;">
+                                Use o código abaixo para ativar sua conta. Ele expira em %s.
                               </p>
-                              <p style="margin:0 0 8px;font-size:12px;font-weight:bold;letter-spacing:0.5px;color:#888;text-transform:uppercase;">Seu código de ativação</p>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding-bottom:32px;">
                               <table role="presentation" width="100%%" cellpadding="0" cellspacing="0">
                                 <tr>
-                                  <td style="background-color:#0d6efd;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;">
-                                    <span style="display:block;font-size:11px;font-weight:bold;letter-spacing:1px;color:rgba(255,255,255,0.75);text-transform:uppercase;margin-bottom:10px;">&#128203; Toque para copiar</span>
-                                    <span style="display:block;font-family:'Courier New',monospace;font-size:30px;font-weight:bold;letter-spacing:5px;color:#ffffff;word-break:break-all;user-select:all;">%s</span>
+                                  <td style="background-color:#f5f5f5;border-radius:8px;padding:24px;text-align:center;">
+                                    <span style="font-family:'Courier New',Courier,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:#111;user-select:all;">%s</span>
                                   </td>
                                 </tr>
                               </table>
-                              <p style="margin:10px 0 24px;font-size:12px;color:#aaa;text-align:center;">
-                                Selecione o código acima e copie &mdash; válido por %s.
-                              </p>
-                              <p style="margin:0;font-size:13px;color:#bbb;">
-                                Se você não criou esta conta, pode ignorar este email.
-                              </p>
                             </td>
                           </tr>
                           <tr>
-                            <td style="padding:20px 32px;border-top:1px solid #eee;">
-                              <span style="font-size:12px;color:#aaa;">— Equipe FlowFuel</span>
+                            <td style="border-top:1px solid #eee;padding-top:24px;">
+                              <p style="margin:0;font-size:13px;color:#999;line-height:1.6;">
+                                Se você não criou esta conta, ignore este email.
+                              </p>
                             </td>
                           </tr>
                         </table>
@@ -132,7 +134,7 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
                   </table>
                 </body>
                 </html>"""
-                .formatted(greetingName, activationToken, validity);
+                .formatted(greetingName, validity, activationToken);
     }
 
     /** Converte o TTL em minutos numa frase amigavel: "1 hora", "2 horas", "30 minutos". */
