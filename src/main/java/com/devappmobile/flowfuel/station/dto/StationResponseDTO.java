@@ -21,4 +21,6 @@ public class StationResponseDTO {
     private Double rating;
     private Double latitude;
     private Double longitude;
+    private String street;
+    private String houseNumber;
 }

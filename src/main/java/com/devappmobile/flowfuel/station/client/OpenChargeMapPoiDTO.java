@@ -21,6 +21,9 @@ public class OpenChargeMapPoiDTO {
         @JsonProperty("Title")
         private String title;
 
+        @JsonProperty("AddressLine1")
+        private String addressLine1;
+
         @JsonProperty("Latitude")
         private Double latitude;
 

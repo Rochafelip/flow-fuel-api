@@ -62,7 +62,10 @@ public class OverpassClient {
         if (lat == null || lon == null) {
             return null;
         }
-        String name = el.getTags() != null ? el.getTags().get("name") : null;
+        var tags = el.getTags();
+        String name = tags != null ? tags.get("name") : null;
+        String street = tags != null ? tags.get("addr:street") : null;
+        String houseNumber = tags != null ? tags.get("addr:housenumber") : null;
         return StationResponseDTO.builder()
                 .placeId("osm:" + el.getType() + "/" + el.getId())
                 .name(name != null ? name : "Posto de combustível")
@@ -70,6 +73,8 @@ public class OverpassClient {
                 .rating(null)
                 .latitude(lat)
                 .longitude(lon)
+                .street(street)
+                .houseNumber(houseNumber)
                 .build();
     }
 

@@ -79,6 +79,7 @@ public class OpenChargeMapClient {
                 .rating(null)
                 .latitude(poi.getAddressInfo().getLatitude())
                 .longitude(poi.getAddressInfo().getLongitude())
+                .street(poi.getAddressInfo().getAddressLine1())
                 .build();
     }
 }
