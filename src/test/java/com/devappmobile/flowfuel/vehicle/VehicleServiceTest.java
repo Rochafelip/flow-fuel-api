@@ -5,8 +5,10 @@ import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
+import com.devappmobile.flowfuel.storage.StorageService;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.user.UserRepository;
+import com.devappmobile.flowfuel.vehicle.dto.PhotoUploadResponse;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,13 +21,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +37,7 @@ class VehicleServiceTest {
     @Mock private VehicleRepository vehicleRepository;
     @Mock private UserRepository userRepository;
     @Mock private AuthorizationHelper authorizationHelper;
+    @Mock private StorageService storageService;
 
     @InjectMocks private VehicleService vehicleService;
 
@@ -205,5 +209,78 @@ class VehicleServiceTest {
         assertThatThrownBy(() -> vehicleService.deleteVehicle(otherUser, 10L))
                 .isInstanceOf(ForbiddenOperationException.class);
         verify(vehicleRepository, never()).deleteById(any());
+    }
+
+    // --- uploadPhoto ---
+
+    @Test
+    void uploadPhoto_arquivoAusente_lancaBusinessRule() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        MockMultipartFile arquivoVazio = new MockMultipartFile("file", "", "image/jpeg", new byte[0]);
+
+        assertThatThrownBy(() -> vehicleService.uploadPhoto(owner, 10L, arquivoVazio))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(vehicleRepository, never()).save(any());
+    }
+
+    @Test
+    void uploadPhoto_tipoInvalido_lancaBusinessRule() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        MockMultipartFile arquivo = new MockMultipartFile("file", "foto.gif", "image/gif", new byte[100]);
+
+        assertThatThrownBy(() -> vehicleService.uploadPhoto(owner, 10L, arquivo))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(vehicleRepository, never()).save(any());
+    }
+
+    @Test
+    void uploadPhoto_maiorQue5MB_lancaBusinessRule() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        byte[] arquivoGrande = new byte[6 * 1024 * 1024];
+        MockMultipartFile arquivo = new MockMultipartFile("file", "foto.jpg", "image/jpeg", arquivoGrande);
+
+        assertThatThrownBy(() -> vehicleService.uploadPhoto(owner, 10L, arquivo))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(vehicleRepository, never()).save(any());
+    }
+
+    @Test
+    void uploadPhoto_donoDiferente_lancaForbidden() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
+
+        MockMultipartFile arquivo = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
+
+        assertThatThrownBy(() -> vehicleService.uploadPhoto(otherUser, 10L, arquivo))
+                .isInstanceOf(ForbiddenOperationException.class);
+    }
+
+    @Test
+    void uploadPhoto_veiculoInexistente_lancaResourceNotFound() {
+        when(vehicleRepository.findById(99L)).thenReturn(Optional.empty());
+
+        MockMultipartFile arquivo = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
+
+        assertThatThrownBy(() -> vehicleService.uploadPhoto(owner, 99L, arquivo))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void uploadPhoto_imagemValida_salvaChaveERetornaInternalUrl() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(vehicleRepository.save(any())).thenReturn(vehicle);
+
+        MockMultipartFile arquivo = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
+
+        PhotoUploadResponse response = vehicleService.uploadPhoto(owner, 10L, arquivo);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getInternalUrl()).isEqualTo("/vehicles/10/photo");
+        assertThat(vehicle.getPhoto()).isEqualTo("vehicle_photos/10_foto.jpg");
+        verify(storageService).upload(eq(arquivo), eq("vehicle_photos/10_foto.jpg"));
     }
 }

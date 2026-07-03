@@ -4,14 +4,17 @@ import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
+import com.devappmobile.flowfuel.storage.StorageService;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.user.UserRepository;
+import com.devappmobile.flowfuel.vehicle.dto.PhotoUploadResponse;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -19,9 +22,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VehicleService {
 
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+    private static final List<String> ALLOWED_IMAGE_TYPES = List.of("image/jpeg", "image/png", "image/webp");
+
     private final VehicleRepository vehicleRepository;
     private final UserRepository userRepository;
     private final AuthorizationHelper authorizationHelper;
+    private final StorageService storageService;
 
     public VehicleResponseDTO createVehicle(User user, VehicleRequestDTO request) {
         Vehicle vehicle = new Vehicle();
@@ -76,6 +83,42 @@ public class VehicleService {
     public void deleteVehicle(User user, Long id) {
         findOwned(user, id);
         vehicleRepository.deleteById(id);
+    }
+
+    public PhotoUploadResponse uploadPhoto(User user, Long id, MultipartFile file) {
+        Vehicle vehicle = findOwned(user, id);
+
+        if (file == null || file.isEmpty()) {
+            throw new BusinessRuleException("Arquivo não informado");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType)) {
+            throw new BusinessRuleException("Tipo de arquivo inválido. Permitido: JPEG, PNG, WEBP");
+        }
+
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new BusinessRuleException("Arquivo excede o tamanho máximo de 5 MB");
+        }
+
+        String previousKey = vehicle.getPhoto();
+        if (previousKey != null) {
+            try {
+                storageService.delete(previousKey);
+            } catch (Exception ignored) {
+            }
+        }
+
+        String originalName = file.getOriginalFilename() != null
+                ? file.getOriginalFilename().replaceAll("[^a-zA-Z0-9._-]", "_")
+                : "photo";
+
+        String key = "vehicle_photos/" + id + "_" + originalName;
+        storageService.upload(file, key);
+        vehicle.setPhoto(key);
+        vehicleRepository.save(vehicle);
+
+        return new PhotoUploadResponse("/vehicles/" + id + "/photo");
     }
 
     public String getConsumptionUnit(Vehicle vehicle) {
