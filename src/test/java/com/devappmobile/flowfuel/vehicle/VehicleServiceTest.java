@@ -122,6 +122,25 @@ class VehicleServiceTest {
     // --- getVehicleById ---
 
     @Test
+    void getVehicleById_comFotoSalva_retornaInternalUrl() {
+        vehicle.setPhoto("vehicle_photos/10_foto.jpg");
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        VehicleResponseDTO response = vehicleService.getVehicleById(owner, 10L);
+
+        assertThat(response.getPhoto()).isEqualTo("/vehicles/10/photo");
+    }
+
+    @Test
+    void getVehicleById_semFoto_retornaPhotoNull() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        VehicleResponseDTO response = vehicleService.getVehicleById(owner, 10L);
+
+        assertThat(response.getPhoto()).isNull();
+    }
+
+    @Test
     void getVehicleById_donoCorreto_retornaVeiculo() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 

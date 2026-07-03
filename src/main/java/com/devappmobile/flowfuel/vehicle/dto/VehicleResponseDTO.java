@@ -37,6 +37,8 @@ public class VehicleResponseDTO {
     private LocalDateTime updatedAt;
 
     public static VehicleResponseDTO from(Vehicle v) {
+        String photoInternalUrl = v.getPhoto() != null ? ("/vehicles/" + v.getId() + "/photo") : null;
+
         return VehicleResponseDTO.builder()
                 .id(v.getId())
                 .type(v.getType())
@@ -51,7 +53,7 @@ public class VehicleResponseDTO {
                 .modelYear(v.getModelYear())
                 .color(v.getColor())
                 .licensePlate(v.getLicensePlate())
-                .photo(v.getPhoto())
+                .photo(photoInternalUrl)
                 .isActive(v.getIsActive())
                 .createdAt(v.getCreatedAt())
                 .updatedAt(v.getUpdatedAt())
