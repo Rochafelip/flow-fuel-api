@@ -701,6 +701,66 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/vehicles/{id}/photo:
+    post:
+      tags: [Vehicles]
+      summary: Upload de foto do veículo
+      description: >-
+        Espelha o upload de foto de perfil de usuário: a imagem é redimensionada
+        para 512x512 JPEG e persistida via StorageService (implementação real:
+        PostgresStorageService, gravando bytes na tabela stored_files — não é
+        S3/Backblaze B2). A chave de storage é salva em Vehicle.photo; a resposta
+        e VehicleResponseDTO.photo expõem apenas internalUrl (sem signedUrl).
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Upload concluído
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  internalUrl:
+                    type: string
+                    example: /vehicles/123/photo
+        "400":
+          description: >-
+            Arquivo ausente, tipo inválido, tamanho acima do limite de negócio (5MB)
+            ou acima do limite do servlet (spring.servlet.multipart.max-file-size)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              examples:
+                arquivoAusente:
+                  value:
+                    code: BUSINESS_RULE_VIOLATED
+                    detail: "Arquivo não informado"
+                tipoInvalido:
+                  value:
+                    code: BUSINESS_RULE_VIOLATED
+                    detail: "Tipo de arquivo inválido. Permitido: JPEG, PNG, WEBP"
+                tamanhoExcedido:
+                  value:
+                    code: BUSINESS_RULE_VIOLATED
+                    detail: "Arquivo excede o tamanho máximo de 5 MB"
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/vehicles/{id}/active:
     put:
       tags: [Vehicles]
