@@ -304,4 +304,101 @@ class VehicleControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.photo").value("/vehicles/" + vehicleId + "/photo"));
     }
+
+    @Test
+    void getPhoto_semFotoUpada_retorna204() throws Exception {
+        String token = obterToken("foto-get204@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        mockMvc.perform(get("/api/v1/vehicles/{id}/photo", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void getPhoto_aposUpload_retorna200ComBytes() throws Exception {
+        String token = obterToken("foto-get200@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", imagemJpegValida());
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", vehicleId)
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/vehicles/{id}/photo", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_JPEG));
+    }
+
+    @Test
+    void getPhoto_donoDiferente_retorna403() throws Exception {
+        String tokenA = obterToken("foto-get-userA@test.com");
+        String tokenB = obterToken("foto-get-userB@test.com");
+        long vehicleId = criarVeiculo(tokenA);
+
+        mockMvc.perform(get("/api/v1/vehicles/{id}/photo", vehicleId)
+                .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getPhoto_veiculoInexistente_retorna404() throws Exception {
+        String token = obterToken("foto-get404@test.com");
+
+        mockMvc.perform(get("/api/v1/vehicles/{id}/photo", 999999L)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deletePhoto_aposUpload_retorna204EGetSubsequenteRetorna204() throws Exception {
+        String token = obterToken("foto-delete@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", imagemJpegValida());
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", vehicleId)
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/v1/vehicles/{id}/photo", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/vehicles/{id}/photo", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deletePhoto_semFotoExistente_retorna204SemErro() throws Exception {
+        String token = obterToken("foto-delete-noop@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        mockMvc.perform(delete("/api/v1/vehicles/{id}/photo", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deletePhoto_donoDiferente_retorna403() throws Exception {
+        String tokenA = obterToken("foto-delete-userA@test.com");
+        String tokenB = obterToken("foto-delete-userB@test.com");
+        long vehicleId = criarVeiculo(tokenA);
+
+        mockMvc.perform(delete("/api/v1/vehicles/{id}/photo", vehicleId)
+                .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deletePhoto_veiculoInexistente_retorna404() throws Exception {
+        String token = obterToken("foto-delete404@test.com");
+
+        mockMvc.perform(delete("/api/v1/vehicles/{id}/photo", 999999L)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
 }
