@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -83,5 +84,20 @@ public class VehicleController {
             @PathVariable Long id,
             @RequestParam("file") MultipartFile file) {
         return vehicleService.uploadPhoto(user, id, file);
+    }
+
+    @GetMapping("/{id}/photo")
+    public ResponseEntity<byte[]> getPhoto(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id) {
+        return vehicleService.getPhoto(user, id);
+    }
+
+    @DeleteMapping("/{id}/photo")
+    public ResponseEntity<Void> deletePhoto(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id) {
+        vehicleService.removePhoto(user, id);
+        return ResponseEntity.noContent().build();
     }
 }
