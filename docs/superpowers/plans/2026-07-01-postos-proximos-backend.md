@@ -1,86 +1,109 @@
 # Postos Próximos — Backend (GET /stations/nearby) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
->
-> **Status: já implementado.** Este plano foi escrito após a implementação
-> (commits `834538a`..`7fe4b61`) para completar o par spec+plano que falta
-> neste repositório — todo outro design em `docs/superpowers/specs/` tem um
-> plano correspondente em `docs/superpowers/plans/`, este não tinha. As
-> caixas abaixo refletem o código **e os testes reais** já existentes no
-> repositório (todo bloco de código deste documento foi copiado do arquivo
-> fonte, não reconstruído de memória) — use como referência de "como foi
-> construído", não como fila de execução. Ver design:
-> `docs/superpowers/specs/2026-07-01-postos-proximos-backend-design.md`.
 
-**Goal:** Implementar `GET /api/v1/stations/nearby`, combinando postos de
-combustível (Overpass/OpenStreetMap) e estações de recarga elétrica (Open
-Charge Map) num único endpoint com cache Redis e rate limiting por usuário.
+**Goal:** Implement `GET /api/v1/stations/nearby`, returning fuel stations (Overpass/OSM) and EV charging stations (Open Charge Map) near a point, with Redis cache, per-user rate limiting, and graceful partial/total failure handling — per `docs/superpowers/specs/2026-07-01-postos-proximos-backend-design.md`.
 
-**Architecture:** Pacote por feature `com.devappmobile.flowfuel.station`:
-`StationController` → `StationService` (orquestra rate limit → cache →
-`OverpassClient` + `OpenChargeMapClient` em paralelo lógico → merge +
-Haversine + ordenação → cache put) → dois clients HTTP síncronos
-(`RestClient`). Cache e rate limit reaproveitam a conexão Lettuce já
-configurada em `RateLimitingConfig` (sem `spring-boot-starter-data-redis`
-novo, sem `@Cacheable`).
+**Architecture:** New package-by-feature module `com.devappmobile.flowfuel.station` mirroring the existing `vehicle`/`vehicleevent` layering: `StationController` → `StationService` → `OverpassClient` + `OpenChargeMapClient` (both using Spring's `RestClient`). `StationService` also talks to a new `StationCacheService` (raw Redis GET/SET reusing the existing Lettuce connection) and to the existing Bucket4j `ProxyManager<String>` bean for per-user rate limiting.
 
-**Tech Stack:** Spring Boot 3.5.7 (MVC síncrono), `RestClient` (Spring
-6.1+), Bucket4j + `LettuceBasedProxyManager` (rate limit), Lettuce
-(`StatefulRedisConnection<String, byte[]>` cru para cache), Jackson,
-Testcontainers (`GenericContainer` redis:7-alpine), MockMvc/Mockito.
+**Tech Stack:** Spring Boot 3.5.7, Java 21, `RestClient` (`spring-boot-starter-web`, no new dependency), Lettuce/Bucket4j (already a dependency), Jackson, JUnit 5 + Mockito + AssertJ + `MockRestServiceServer` (all already in `spring-boot-starter-test`), Testcontainers (already a dependency).
+
+---
+
+## Important design note (read before starting)
+
+The existing `RateLimitingConfig` (`src/main/java/com/devappmobile/flowfuel/config/RateLimitingConfig.java`) is annotated `@ConditionalOnProperty(name = "flowfuel.rate-limit.enabled", havingValue = "true", matchIfMissing = true)`. Test `application.properties` (`src/test/resources/application.properties:13`) sets `flowfuel.rate-limit.enabled=false`, so in most existing tests **the `ProxyManager<String>` and `StatefulRedisConnection<String, byte[]>` beans do not exist in the Spring context at all** (not just "Redis down" — the bean is absent).
+
+If `StationService`/`StationCacheService` took these as plain constructor-injected `final` fields, every unrelated `@SpringBootTest` in the suite that doesn't override `flowfuel.rate-limit.enabled=true` would fail to start the context (`NoSuchBeanDefinitionException`), because Spring can't autowire a bean that doesn't exist.
+
+**Fix:** inject both dependencies as `ObjectProvider<T>` and call `.getIfAvailable()`. If `null`, treat exactly like the existing "Redis unavailable" fail-open case (skip cache / skip rate limit, log a warning). This is consistent with the spec's own fail-open philosophy for both cache and rate limiting, and requires zero changes to `RateLimitingConfig` or test properties.
 
 ---
 
 ## File Structure
 
-```
-src/main/java/com/devappmobile/flowfuel/station/
-  StationType.java                 — enum FUEL | ELECTRIC
-  HaversineUtil.java                — cálculo de distância em metros, sem estado
-  StationCacheService.java          — get/put raw Redis (Lettuce), fail-open
-  StationService.java               — orquestração: rate limit, cache, merge, sort
-  StationController.java            — GET /nearby, validação de lat/lng/radius
-  dto/StationResponseDTO.java       — shape de resposta (placeId, name, type, ...)
-  client/OverpassClient.java        — POST Overpass QL, parse node/way/relation
-  client/OverpassResponseDTO.java   — DTO de resposta Overpass (elements/center/tags)
-  client/OpenChargeMapClient.java   — GET Open Charge Map, header X-API-Key opcional
-  client/OpenChargeMapPoiDTO.java   — DTO de resposta OCM (ID/AddressInfo)
-
-src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java
-  — + EXTERNAL_SERVICE_UNAVAILABLE(503)
-src/main/java/com/devappmobile/flowfuel/exception/ExternalServiceUnavailableException.java
-  — nova exceção, mapeada para o ErrorCode acima
-src/main/resources/application.properties
-  — flowfuel.station.overpass.base-url (default overpass-api.de)
-  — flowfuel.station.open-charge-map.base-url (default api.openchargemap.io)
-  — flowfuel.station.open-charge-map.api-key=${OPEN_CHARGE_MAP_API_KEY:}
-
-src/test/java/com/devappmobile/flowfuel/station/
-  HaversineUtilTest.java
-  StationCacheServiceTest.java
-  StationServiceTest.java
-  StationControllerIntegrationTest.java
-  StationRedisIntegrationTest.java   — Testcontainers real: cache hit + rate limit
-  client/OverpassClientTest.java
-  client/OpenChargeMapClientTest.java
-```
+Create:
+- `src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java` — modify, add `EXTERNAL_SERVICE_UNAVAILABLE`
+- `src/main/java/com/devappmobile/flowfuel/exception/ExternalServiceUnavailableException.java`
+- `src/main/java/com/devappmobile/flowfuel/exception/RateLimitExceededException.java`
+- `src/main/java/com/devappmobile/flowfuel/config/GlobalExceptionHandler.java` — modify, add handler for `RateLimitExceededException` (sets `Retry-After`)
+- `src/main/java/com/devappmobile/flowfuel/station/StationType.java`
+- `src/main/java/com/devappmobile/flowfuel/station/dto/StationResponseDTO.java`
+- `src/main/java/com/devappmobile/flowfuel/station/HaversineUtil.java`
+- `src/main/java/com/devappmobile/flowfuel/station/client/OverpassResponseDTO.java`
+- `src/main/java/com/devappmobile/flowfuel/station/client/OverpassClient.java`
+- `src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapPoiDTO.java`
+- `src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClient.java`
+- `src/main/java/com/devappmobile/flowfuel/station/StationCacheService.java`
+- `src/main/java/com/devappmobile/flowfuel/station/StationService.java`
+- `src/main/java/com/devappmobile/flowfuel/station/StationController.java`
+- `src/main/resources/application.properties` — modify, add station config block
+- Tests mirroring each file under `src/test/java/com/devappmobile/flowfuel/station/...` and `src/test/java/com/devappmobile/flowfuel/exception/...`
 
 ---
 
-### Task 1: ErrorCode e exceção para falha de serviço externo
+### Task 1: ErrorCode + new exceptions + Retry-After handling
 
 **Files:**
 - Modify: `src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java`
 - Create: `src/main/java/com/devappmobile/flowfuel/exception/ExternalServiceUnavailableException.java`
+- Create: `src/main/java/com/devappmobile/flowfuel/exception/RateLimitExceededException.java`
+- Modify: `src/main/java/com/devappmobile/flowfuel/config/GlobalExceptionHandler.java`
+- Test: `src/test/java/com/devappmobile/flowfuel/config/GlobalExceptionHandlerRateLimitTest.java`
 
-- [x] **Step 1: Adicionar o novo ErrorCode**
+- [ ] **Step 1: Write the failing test**
 
 ```java
-// 503 — dependencia externa indisponivel
-EXTERNAL_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Serviço externo indisponível"),
+package com.devappmobile.flowfuel.config;
+
+import com.devappmobile.flowfuel.exception.RateLimitExceededException;
+import jakarta.servlet.http.HttpServletRequest;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class GlobalExceptionHandlerRateLimitTest {
+
+    @Test
+    void handleRateLimitExceeded_retorna429ComRetryAfterHeader() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        HttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/stations/nearby");
+
+        ResponseEntity<ProblemDetail> response =
+                handler.handleRateLimitExceeded(new RateLimitExceededException(30), req);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(429);
+        assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("30");
+        assertThat(response.getBody().getProperties().get("code")).isEqualTo("RATE_LIMIT_EXCEEDED");
+    }
+}
 ```
 
-- [x] **Step 2: Criar a exceção**
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mvn -q test -Dtest=GlobalExceptionHandlerRateLimitTest`
+Expected: FAIL (compile error — `RateLimitExceededException` and `handleRateLimitExceeded` don't exist yet)
+
+- [ ] **Step 3: Add the `EXTERNAL_SERVICE_UNAVAILABLE` error code**
+
+In `src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java`, add a new section right after `RATE_LIMIT_EXCEEDED` and before `INTERNAL_ERROR`:
+
+```java
+    // 503 — dependencia externa indisponivel
+    EXTERNAL_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Serviço externo indisponível"),
+
+    // 500 — generico
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno");
+```
+
+(replace the existing final `INTERNAL_ERROR(...)` line, keeping it as the last entry with the terminating semicolon).
+
+- [ ] **Step 4: Create the two new exception classes**
+
+`src/main/java/com/devappmobile/flowfuel/exception/ExternalServiceUnavailableException.java`:
 
 ```java
 package com.devappmobile.flowfuel.exception;
@@ -100,17 +123,74 @@ public class ExternalServiceUnavailableException extends AppException {
 }
 ```
 
-- [x] **Step 3: Commit**
+`src/main/java/com/devappmobile/flowfuel/exception/RateLimitExceededException.java`:
+
+```java
+package com.devappmobile.flowfuel.exception;
+
+import com.devappmobile.flowfuel.common.error.AppException;
+import com.devappmobile.flowfuel.common.error.ErrorCode;
+
+public class RateLimitExceededException extends AppException {
+
+    private final long retryAfterSeconds;
+
+    public RateLimitExceededException(long retryAfterSeconds) {
+        super(ErrorCode.RATE_LIMIT_EXCEEDED,
+                "Limite de requisições excedido. Tente novamente em " + retryAfterSeconds + " segundos.");
+        this.retryAfterSeconds = retryAfterSeconds;
+    }
+
+    public long getRetryAfterSeconds() {
+        return retryAfterSeconds;
+    }
+}
+```
+
+- [ ] **Step 5: Add the Retry-After handler to `GlobalExceptionHandler`**
+
+In `src/main/java/com/devappmobile/flowfuel/config/GlobalExceptionHandler.java`, add the import:
+
+```java
+import com.devappmobile.flowfuel.exception.RateLimitExceededException;
+import org.springframework.http.HttpHeaders;
+```
+
+(`HttpHeaders` is already imported — check before adding a duplicate.)
+
+Add a new handler **before** `handleAppException` (Spring picks the most specific match regardless of order, but keep it visually next to related code):
+
+```java
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ProblemDetail> handleRateLimitExceeded(RateLimitExceededException ex,
+            HttpServletRequest req) {
+        logClientError(ex.getErrorCode(), req, ex.getMessage());
+        ProblemDetail pd = problemDetail(ex.getErrorCode(), ex.getMessage(), req.getRequestURI());
+        return ResponseEntity.status(ex.getErrorCode().status())
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(ex.getRetryAfterSeconds()))
+                .body(pd);
+    }
+```
+
+- [ ] **Step 6: Run test to verify it passes**
+
+Run: `mvn -q test -Dtest=GlobalExceptionHandlerRateLimitTest`
+Expected: PASS
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/main/java/com/devappmobile/flowfuel/common/error/ErrorCode.java \
-        src/main/java/com/devappmobile/flowfuel/exception/ExternalServiceUnavailableException.java
-git commit -m "feat(station): add EXTERNAL_SERVICE_UNAVAILABLE error code"
+        src/main/java/com/devappmobile/flowfuel/exception/ExternalServiceUnavailableException.java \
+        src/main/java/com/devappmobile/flowfuel/exception/RateLimitExceededException.java \
+        src/main/java/com/devappmobile/flowfuel/config/GlobalExceptionHandler.java \
+        src/test/java/com/devappmobile/flowfuel/config/GlobalExceptionHandlerRateLimitTest.java
+git commit -m "feat(station): add EXTERNAL_SERVICE_UNAVAILABLE error code and rate-limit Retry-After handling"
 ```
 
 ---
 
-### Task 2: StationType, StationResponseDTO e HaversineUtil
+### Task 2: StationType, StationResponseDTO, HaversineUtil
 
 **Files:**
 - Create: `src/main/java/com/devappmobile/flowfuel/station/StationType.java`
@@ -118,7 +198,7 @@ git commit -m "feat(station): add EXTERNAL_SERVICE_UNAVAILABLE error code"
 - Create: `src/main/java/com/devappmobile/flowfuel/station/HaversineUtil.java`
 - Test: `src/test/java/com/devappmobile/flowfuel/station/HaversineUtilTest.java`
 
-- [x] **Step 1: Escrever teste de Haversine (ponto igual + dois pontos conhecidos)**
+- [ ] **Step 1: Write the failing test**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -143,12 +223,12 @@ class HaversineUtilTest {
 }
 ```
 
-- [x] **Step 2: Rodar e confirmar falha (classe não existe)**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `./mvnw -q test -Dtest=HaversineUtilTest`
-Expected: FAIL — `cannot find symbol: class HaversineUtil`
+Run: `mvn -q test -Dtest=HaversineUtilTest`
+Expected: FAIL (compile error — `HaversineUtil` doesn't exist yet)
 
-- [x] **Step 3: Implementar StationType**
+- [ ] **Step 3: Write `StationType`**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -159,7 +239,7 @@ public enum StationType {
 }
 ```
 
-- [x] **Step 4: Implementar StationResponseDTO**
+- [ ] **Step 4: Write `StationResponseDTO`**
 
 ```java
 package com.devappmobile.flowfuel.station.dto;
@@ -185,12 +265,10 @@ public class StationResponseDTO {
     private Double rating;
     private Double latitude;
     private Double longitude;
-    private String street;
-    private String houseNumber;
 }
 ```
 
-- [x] **Step 5: Implementar HaversineUtil**
+- [ ] **Step 5: Write `HaversineUtil`**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -213,32 +291,31 @@ public final class HaversineUtil {
 }
 ```
 
-- [x] **Step 6: Rodar e confirmar sucesso**
+- [ ] **Step 6: Run test to verify it passes**
 
-Run: `./mvnw -q test -Dtest=HaversineUtilTest`
+Run: `mvn -q test -Dtest=HaversineUtilTest`
 Expected: PASS
 
-- [x] **Step 7: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/main/java/com/devappmobile/flowfuel/station/StationType.java \
         src/main/java/com/devappmobile/flowfuel/station/dto/StationResponseDTO.java \
         src/main/java/com/devappmobile/flowfuel/station/HaversineUtil.java \
         src/test/java/com/devappmobile/flowfuel/station/HaversineUtilTest.java
-git commit -m "feat(station): add StationType, StationResponseDTO and HaversineUtil"
+git commit -m "feat(station): add StationType, StationResponseDTO and Haversine distance utility"
 ```
 
 ---
 
-### Task 3: OverpassClient (postos de combustível)
+### Task 3: OverpassClient (fuel stations)
 
 **Files:**
 - Create: `src/main/java/com/devappmobile/flowfuel/station/client/OverpassResponseDTO.java`
 - Create: `src/main/java/com/devappmobile/flowfuel/station/client/OverpassClient.java`
 - Test: `src/test/java/com/devappmobile/flowfuel/station/client/OverpassClientTest.java`
-- Modify: `src/main/resources/application.properties`
 
-- [x] **Step 1: Escrever teste com `MockRestServiceServer` — node, way e relation numa resposta só, resposta vazia e erro 500**
+- [ ] **Step 1: Write the failing test**
 
 ```java
 package com.devappmobile.flowfuel.station.client;
@@ -248,6 +325,7 @@ import com.devappmobile.flowfuel.station.StationType;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -333,12 +411,12 @@ class OverpassClientTest {
 }
 ```
 
-- [x] **Step 2: Rodar e confirmar falha**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `./mvnw -q test -Dtest=OverpassClientTest`
-Expected: FAIL — `cannot find symbol: class OverpassClient`
+Run: `mvn -q test -Dtest=OverpassClientTest`
+Expected: FAIL (compile error — `OverpassClient` doesn't exist yet)
 
-- [x] **Step 3: Implementar OverpassResponseDTO**
+- [ ] **Step 3: Write `OverpassResponseDTO`**
 
 ```java
 package com.devappmobile.flowfuel.station.client;
@@ -375,7 +453,7 @@ public class OverpassResponseDTO {
 }
 ```
 
-- [x] **Step 4: Implementar OverpassClient**
+- [ ] **Step 4: Write `OverpassClient`**
 
 ```java
 package com.devappmobile.flowfuel.station.client;
@@ -395,6 +473,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
+/**
+ * Cliente da Overpass API (OpenStreetMap) para busca de postos de combustivel.
+ * Publica, sem autenticacao/key. Ver docs/superpowers/specs/2026-07-01-postos-proximos-backend-design.md.
+ */
 @Component
 public class OverpassClient {
 
@@ -438,10 +520,7 @@ public class OverpassClient {
         if (lat == null || lon == null) {
             return null;
         }
-        var tags = el.getTags();
-        String name = tags != null ? tags.get("name") : null;
-        String street = tags != null ? tags.get("addr:street") : null;
-        String houseNumber = tags != null ? tags.get("addr:housenumber") : null;
+        String name = el.getTags() != null ? el.getTags().get("name") : null;
         return StationResponseDTO.builder()
                 .placeId("osm:" + el.getType() + "/" + el.getId())
                 .name(name != null ? name : "Posto de combustível")
@@ -449,8 +528,6 @@ public class OverpassClient {
                 .rating(null)
                 .latitude(lat)
                 .longitude(lon)
-                .street(street)
-                .houseNumber(houseNumber)
                 .build();
     }
 
@@ -460,38 +537,30 @@ public class OverpassClient {
 }
 ```
 
-- [x] **Step 5: Adicionar propriedade de configuração**
+- [ ] **Step 5: Run test to verify it passes**
 
-```properties
-flowfuel.station.overpass.base-url=${OVERPASS_BASE_URL:https://overpass-api.de/api/interpreter}
-```
+Run: `mvn -q test -Dtest=OverpassClientTest`
+Expected: PASS
 
-- [x] **Step 6: Rodar e confirmar sucesso**
-
-Run: `./mvnw -q test -Dtest=OverpassClientTest`
-Expected: PASS (3 testes)
-
-- [x] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/main/java/com/devappmobile/flowfuel/station/client/OverpassResponseDTO.java \
         src/main/java/com/devappmobile/flowfuel/station/client/OverpassClient.java \
-        src/test/java/com/devappmobile/flowfuel/station/client/OverpassClientTest.java \
-        src/main/resources/application.properties
-git commit -m "feat(station): add OverpassClient for fuel stations via OSM"
+        src/test/java/com/devappmobile/flowfuel/station/client/OverpassClientTest.java
+git commit -m "feat(station): add OverpassClient for fuel station lookup"
 ```
 
 ---
 
-### Task 4: OpenChargeMapClient (estações de recarga elétrica)
+### Task 4: OpenChargeMapClient (EV charging stations)
 
 **Files:**
 - Create: `src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapPoiDTO.java`
 - Create: `src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClient.java`
 - Test: `src/test/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClientTest.java`
-- Modify: `src/main/resources/application.properties`
 
-- [x] **Step 1: Escrever teste — resposta válida, POI sem AddressInfo/coordenadas filtrado, header X-API-Key só quando key configurada, erro 500**
+- [ ] **Step 1: Write the failing test**
 
 ```java
 package com.devappmobile.flowfuel.station.client;
@@ -499,6 +568,7 @@ package com.devappmobile.flowfuel.station.client;
 import com.devappmobile.flowfuel.exception.ExternalServiceUnavailableException;
 import com.devappmobile.flowfuel.station.StationType;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -511,6 +581,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestToUriTemplate;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -547,25 +618,6 @@ class OpenChargeMapClientTest {
     }
 
     @Test
-    void findChargingStations_poiSemAddressInfoOuCoordenadas_filtraResultado() {
-        OpenChargeMapClient client = buildClient("");
-        String body = """
-                [
-                  {"ID":99},
-                  {"ID":98,"AddressInfo":{"Title":"Sem coordenadas"}},
-                  {"ID":42,"AddressInfo":{"Title":"Posto Eletrico","Latitude":-8.05,"Longitude":-34.90}}
-                ]
-                """;
-        server.expect(method(GET))
-                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
-
-        List<StationResponseDTO> result = client.findChargingStations(-8.05, -34.90, 5000);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getPlaceId()).isEqualTo("ocm:42");
-    }
-
-    @Test
     void findChargingStations_comApiKey_enviaHeaderXApiKey() {
         OpenChargeMapClient client = buildClient("minha-key");
         server.expect(method(GET))
@@ -586,12 +638,14 @@ class OpenChargeMapClientTest {
 }
 ```
 
-- [x] **Step 2: Rodar e confirmar falha**
+Note: `requestToUriTemplate` import above is unused if you only assert on method/header — remove it if your IDE flags unused imports; kept here only to show it's available if you want to add stricter query-param assertions.
 
-Run: `./mvnw -q test -Dtest=OpenChargeMapClientTest`
-Expected: FAIL — `cannot find symbol: class OpenChargeMapClient`
+- [ ] **Step 2: Run test to verify it fails**
 
-- [x] **Step 3: Implementar OpenChargeMapPoiDTO**
+Run: `mvn -q test -Dtest=OpenChargeMapClientTest`
+Expected: FAIL (compile error — `OpenChargeMapClient` doesn't exist yet)
+
+- [ ] **Step 3: Write `OpenChargeMapPoiDTO`**
 
 ```java
 package com.devappmobile.flowfuel.station.client;
@@ -617,9 +671,6 @@ public class OpenChargeMapPoiDTO {
         @JsonProperty("Title")
         private String title;
 
-        @JsonProperty("AddressLine1")
-        private String addressLine1;
-
         @JsonProperty("Latitude")
         private Double latitude;
 
@@ -629,7 +680,7 @@ public class OpenChargeMapPoiDTO {
 }
 ```
 
-- [x] **Step 4: Implementar OpenChargeMapClient**
+- [ ] **Step 4: Write `OpenChargeMapClient`**
 
 ```java
 package com.devappmobile.flowfuel.station.client;
@@ -648,6 +699,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Cliente da Open Charge Map API para busca de estacoes de recarga eletrica.
+ * Header X-API-Key e opcional: funciona sem ela, com rate limit mais baixo.
+ * Ver docs/superpowers/specs/2026-07-01-postos-proximos-backend-design.md.
+ */
 @Component
 public class OpenChargeMapClient {
 
@@ -705,34 +761,23 @@ public class OpenChargeMapClient {
                 .rating(null)
                 .latitude(poi.getAddressInfo().getLatitude())
                 .longitude(poi.getAddressInfo().getLongitude())
-                .street(poi.getAddressInfo().getAddressLine1())
                 .build();
     }
 }
 ```
 
-- [x] **Step 5: Adicionar propriedades de configuração**
+- [ ] **Step 5: Run test to verify it passes**
 
-```properties
-# env var OPEN_CHARGE_MAP_API_KEY (opcional, app sobe normalmente sem ela).
-flowfuel.station.overpass.base-url=${OVERPASS_BASE_URL:https://overpass-api.de/api/interpreter}
-flowfuel.station.open-charge-map.base-url=${OPEN_CHARGE_MAP_BASE_URL:https://api.openchargemap.io/v3/poi}
-flowfuel.station.open-charge-map.api-key=${OPEN_CHARGE_MAP_API_KEY:}
-```
+Run: `mvn -q test -Dtest=OpenChargeMapClientTest`
+Expected: PASS
 
-- [x] **Step 6: Rodar e confirmar sucesso**
-
-Run: `./mvnw -q test -Dtest=OpenChargeMapClientTest`
-Expected: PASS (4 testes)
-
-- [x] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapPoiDTO.java \
         src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClient.java \
-        src/test/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClientTest.java \
-        src/main/resources/application.properties
-git commit -m "feat(station): add OpenChargeMapClient for electric charging stations"
+        src/test/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClientTest.java
+git commit -m "feat(station): add OpenChargeMapClient for EV charging station lookup"
 ```
 
 ---
@@ -743,7 +788,7 @@ git commit -m "feat(station): add OpenChargeMapClient for electric charging stat
 - Create: `src/main/java/com/devappmobile/flowfuel/station/StationCacheService.java`
 - Test: `src/test/java/com/devappmobile/flowfuel/station/StationCacheServiceTest.java`
 
-- [x] **Step 1: Escrever testes — sem conexão, miss, hit (deserializa), exceção do Redis (fail-open), put sem conexão, put com conexão (TTL)**
+- [ ] **Step 1: Write the failing test**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -850,12 +895,12 @@ class StationCacheServiceTest {
 }
 ```
 
-- [x] **Step 2: Rodar e confirmar falha**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `./mvnw -q test -Dtest=StationCacheServiceTest`
-Expected: FAIL — `cannot find symbol: class StationCacheService`
+Run: `mvn -q test -Dtest=StationCacheServiceTest`
+Expected: FAIL (compile error — `StationCacheService` doesn't exist yet)
 
-- [x] **Step 3: Implementar StationCacheService**
+- [ ] **Step 3: Write `StationCacheService`**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -874,6 +919,13 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Cache Redis raw (nao @Cacheable) para resultados de busca de postos/estacoes.
+ * Reaproveita a conexao Lettuce de RateLimitingConfig — ver nota de design no
+ * plano em docs/superpowers/plans/2026-07-01-postos-proximos-backend.md sobre
+ * por que a conexao chega como ObjectProvider (pode nao existir quando
+ * flowfuel.rate-limit.enabled=false). Fail-open: qualquer falha vira cache miss.
+ */
 @Service
 public class StationCacheService {
 
@@ -914,7 +966,7 @@ public class StationCacheService {
         }
         try {
             byte[] value = objectMapper.writeValueAsBytes(stations);
-            connection.sync().set(key, value, new SetArgs().ex(TTL.toSeconds()));
+            connection.sync().set(key, value, SetArgs.builder().ex(TTL.toSeconds()).build());
         } catch (Exception e) {
             log.warn("Station cache indisponivel (put), fail-open. key={} error={}", key, e.getMessage());
         }
@@ -922,28 +974,28 @@ public class StationCacheService {
 }
 ```
 
-- [x] **Step 4: Rodar e confirmar sucesso**
+- [ ] **Step 4: Run test to verify it passes**
 
-Run: `./mvnw -q test -Dtest=StationCacheServiceTest`
-Expected: PASS (6 testes)
+Run: `mvn -q test -Dtest=StationCacheServiceTest`
+Expected: PASS
 
-- [x] **Step 5: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/devappmobile/flowfuel/station/StationCacheService.java \
         src/test/java/com/devappmobile/flowfuel/station/StationCacheServiceTest.java
-git commit -m "feat(station): add Redis cache service, fail-open"
+git commit -m "feat(station): add Redis-backed StationCacheService with fail-open behavior"
 ```
 
 ---
 
-### Task 6: StationService (orquestração: rate limit, cache, merge, fallback)
+### Task 6: StationService (merge, rate limit, cache, fallback)
 
 **Files:**
 - Create: `src/main/java/com/devappmobile/flowfuel/station/StationService.java`
 - Test: `src/test/java/com/devappmobile/flowfuel/station/StationServiceTest.java`
 
-- [x] **Step 1: Escrever testes — cache hit, cache miss (merge+ordena+salva), fallback parcial, fallback total, rate limit estourado, sem ProxyManager (fail-open)**
+- [ ] **Step 1: Write the failing test**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -966,7 +1018,6 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -994,7 +1045,7 @@ class StationServiceTest {
     private void stubRateLimitAllows() {
         when(proxyManagerProvider.getIfAvailable()).thenReturn(proxyManager);
         doReturn(bucketBuilder).when(proxyManager).builder();
-        when(bucketBuilder.build(any(), any(Supplier.class))).thenReturn(bucketProxy);
+        when(bucketBuilder.build(any(), any())).thenReturn(bucketProxy);
         when(bucketProxy.tryConsumeAndReturnRemaining(1))
                 .thenReturn(ConsumptionProbe.consumed(9, 0));
     }
@@ -1067,7 +1118,7 @@ class StationServiceTest {
     void findNearby_rateLimitEstourado_lancaRateLimitExceeded() {
         when(proxyManagerProvider.getIfAvailable()).thenReturn(proxyManager);
         doReturn(bucketBuilder).when(proxyManager).builder();
-        when(bucketBuilder.build(any(), any(Supplier.class))).thenReturn(bucketProxy);
+        when(bucketBuilder.build(any(), any())).thenReturn(bucketProxy);
         when(bucketProxy.tryConsumeAndReturnRemaining(1))
                 .thenReturn(ConsumptionProbe.rejected(0, 1_000_000_000L, 0));
 
@@ -1088,12 +1139,12 @@ class StationServiceTest {
 }
 ```
 
-- [x] **Step 2: Rodar e confirmar falha**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `./mvnw -q test -Dtest=StationServiceTest`
-Expected: FAIL — `cannot find symbol: class StationService`
+Run: `mvn -q test -Dtest=StationServiceTest`
+Expected: FAIL (compile error — `StationService` doesn't exist yet)
 
-- [x] **Step 3: Implementar StationService**
+- [ ] **Step 3: Write `StationService`**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -1120,6 +1171,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+/**
+ * Orquestra a busca de postos proximos: cache -> Overpass + Open Charge Map ->
+ * merge + distancia (Haversine) + ordenacao -> cache put. Rate limit por
+ * userId antes de qualquer chamada. Fail-open tanto para cache quanto para
+ * rate limit quando o Redis/ProxyManager nao estao disponiveis — ver nota de
+ * design no plano em docs/superpowers/plans/2026-07-01-postos-proximos-backend.md.
+ */
 @Service
 public class StationService {
 
@@ -1192,15 +1250,8 @@ public class StationService {
             return;
         }
         String bucketKey = "station-rate-limit::" + userId;
-        ConsumptionProbe probe;
-        try {
-            BucketProxy bucket = proxyManager.builder().build(bucketKey, () -> STATION_RATE_LIMIT);
-            probe = bucket.tryConsumeAndReturnRemaining(1);
-        } catch (Exception e) {
-            log.warn("Rate limit Redis indisponivel para stations, fail-open. userId={} error={}",
-                    userId, e.getMessage());
-            return;
-        }
+        BucketProxy bucket = proxyManager.builder().build(bucketKey, () -> STATION_RATE_LIMIT);
+        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
         if (!probe.isConsumed()) {
             long retryAfterSeconds = Math.max(1L,
                     Math.ceilDiv(probe.getNanosToWaitForRefill(), 1_000_000_000L));
@@ -1218,42 +1269,64 @@ public class StationService {
 }
 ```
 
-- [x] **Step 4: Rodar e confirmar sucesso**
+Note: `checkRateLimit` intentionally does **not** catch/fail-open on exceptions thrown by `proxyManager.builder()...tryConsumeAndReturnRemaining(...)` (e.g. Redis down at runtime after the bean already existed) — add that fail-open behavior now:
 
-Run: `./mvnw -q test -Dtest=StationServiceTest`
-Expected: PASS (6 testes)
+- [ ] **Step 4: Add runtime fail-open around the rate-limit check**
 
-- [x] **Step 5: Commit**
+Replace the body of `checkRateLimit` with:
+
+```java
+    private void checkRateLimit(Long userId) {
+        ProxyManager<String> proxyManager = proxyManagerProvider.getIfAvailable();
+        if (proxyManager == null) {
+            return;
+        }
+        String bucketKey = "station-rate-limit::" + userId;
+        ConsumptionProbe probe;
+        try {
+            BucketProxy bucket = proxyManager.builder().build(bucketKey, () -> STATION_RATE_LIMIT);
+            probe = bucket.tryConsumeAndReturnRemaining(1);
+        } catch (Exception e) {
+            log.warn("Rate limit Redis indisponivel para stations, fail-open. userId={} error={}",
+                    userId, e.getMessage());
+            return;
+        }
+        if (!probe.isConsumed()) {
+            long retryAfterSeconds = Math.max(1L,
+                    Math.ceilDiv(probe.getNanosToWaitForRefill(), 1_000_000_000L));
+            throw new RateLimitExceededException(retryAfterSeconds);
+        }
+    }
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `mvn -q test -Dtest=StationServiceTest`
+Expected: PASS (all 7 tests)
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/main/java/com/devappmobile/flowfuel/station/StationService.java \
         src/test/java/com/devappmobile/flowfuel/station/StationServiceTest.java
-git commit -m "feat(station): add StationService orchestration with cache and rate limit"
+git commit -m "feat(station): add StationService with cache, rate limit and partial-failure merge logic"
 ```
 
 ---
 
-### Task 7: StationController
+### Task 7: StationController + validation
 
 **Files:**
 - Create: `src/main/java/com/devappmobile/flowfuel/station/StationController.java`
 - Test: `src/test/java/com/devappmobile/flowfuel/station/StationControllerIntegrationTest.java`
 
-- [x] **Step 1: Escrever testes MockMvc — 401 sem token, 400 sem lat/lng, 400 lat fora de faixa, 200 com resultados do service**
-
-O teste usa `@SpringBootTest` + `@AutoConfigureMockMvc` real (não um slice),
-com um helper `obterToken` que registra e loga um usuário de verdade via
-`/api/v1/auth/register` + `/api/v1/auth/login`, ativando-o manualmente via
-`UserRepository` — mesmo padrão dos outros `*ControllerIntegrationTest` do
-projeto.
+- [ ] **Step 1: Write the failing test**
 
 ```java
 package com.devappmobile.flowfuel.station;
 
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import com.devappmobile.flowfuel.user.UserRepository;
-import com.devappmobile.flowfuel.user.UserStatus;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -1262,7 +1335,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
 
@@ -1278,7 +1350,6 @@ class StationControllerIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
-    @Autowired private ObjectMapper objectMapper;
     @MockBean private StationService stationService;
 
     @BeforeEach
@@ -1292,17 +1363,18 @@ class StationControllerIntegrationTest {
                 .content("""
                         {"email":"%s","password":"senha123","name":"Teste"}
                         """.formatted(email)));
-        userRepository.findByEmail(email).ifPresent(u -> {
-            u.setStatus(UserStatus.ACTIVE);
-            userRepository.save(u);
-        });
-        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+        var user = userRepository.findByEmail(email).orElseThrow();
+        user.setActive(true);
+        userRepository.save(user);
+        var loginResult = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email":"%s","password":"senha123"}
                         """.formatted(email)))
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
+        var json = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(loginResult.getResponse().getContentAsString());
+        return json.get("token").asText();
     }
 
     @Test
@@ -1348,12 +1420,14 @@ class StationControllerIntegrationTest {
 }
 ```
 
-- [x] **Step 2: Rodar e confirmar falha**
+Before writing this test, check the exact registration/login/activation request shapes and field names (email/password/name; whether `active` is the correct setter, whether login returns `token`) by reading `src/test/java/com/devappmobile/flowfuel/vehicle/VehicleControllerIntegrationTest.java`'s `obterToken` helper in full, and mirror it exactly — do not guess field names.
 
-Run: `./mvnw -q test -Dtest=StationControllerIntegrationTest`
-Expected: FAIL — `cannot find symbol: class StationController` / 404 nas requisições
+- [ ] **Step 2: Run test to verify it fails**
 
-- [x] **Step 3: Implementar StationController**
+Run: `mvn -q test -Dtest=StationControllerIntegrationTest`
+Expected: FAIL (compile error — `StationController` doesn't exist yet)
+
+- [ ] **Step 3: Write `StationController`**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -1393,37 +1467,61 @@ public class StationController {
 }
 ```
 
-- [x] **Step 4: Rodar e confirmar sucesso**
+- [ ] **Step 4: Run test to verify it passes**
 
-Run: `./mvnw -q test -Dtest=StationControllerIntegrationTest`
-Expected: PASS (4 testes)
+Run: `mvn -q test -Dtest=StationControllerIntegrationTest`
+Expected: PASS. If the 400 tests instead return 500, it means `ConstraintViolationException` isn't being thrown for `@RequestParam` — verify `@Validated` is present at class level (required for Spring to validate `@RequestParam`/`@PathVariable` method parameters) and that the existing `GlobalExceptionHandler.handleConstraintViolation` (`config/GlobalExceptionHandler.java:54`) already covers it (it does — no changes needed there).
 
-- [x] **Step 5: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/devappmobile/flowfuel/station/StationController.java \
         src/test/java/com/devappmobile/flowfuel/station/StationControllerIntegrationTest.java
-git commit -m "feat(station): add GET /api/v1/stations/nearby endpoint"
+git commit -m "feat(station): add GET /api/v1/stations/nearby controller with param validation"
 ```
 
 ---
 
-### Task 8: Teste de integração Redis (Testcontainers)
+### Task 8: Application config (Open Charge Map key, base URLs)
 
 **Files:**
-- Test: `src/test/java/com/devappmobile/flowfuel/station/StationRedisIntegrationTest.java`
+- Modify: `src/main/resources/application.properties`
 
-Sobe um `GenericContainer` Redis real (padrão já usado em
-`RateLimitFilterIntegrationTest`) e injeta a URL via
-`flowfuel.rate-limit.redis-url` (mesma property que `RateLimitingConfig`
-usa para configurar a conexão Lettuce compartilhada por cache e rate
-limit). `OverpassClient`/`OpenChargeMapClient` são mockados (`@MockBean`)
-para o teste não depender de rede externa real no CI — o que se verifica é
-o comportamento de `StationService` com Redis de verdade por trás: cache
-hit evita nova chamada aos clients, e a 11ª chamada no mesmo minuto para o
-mesmo usuário estoura o rate limit.
+- [ ] **Step 1: Add the station config block**
 
-- [x] **Step 1: Escrever os dois testes**
+Add near the other feature config blocks (after the rate-limit block, following the existing commented-block convention seen at lines 62-65 and 83-84):
+
+```properties
+# Postos proximos (GET /api/v1/stations/nearby): Overpass API (OSM, sem key)
+# e Open Charge Map (sem key obrigatoria; com key aumenta o rate limit).
+# Gere uma key gratuita em openchargemap.org se necessario e configure via
+# env var OPEN_CHARGE_MAP_API_KEY (opcional, app sobe normalmente sem ela).
+flowfuel.station.overpass.base-url=${OVERPASS_BASE_URL:https://overpass-api.de/api/interpreter}
+flowfuel.station.open-charge-map.base-url=${OPEN_CHARGE_MAP_BASE_URL:https://api.openchargemap.io/v3/poi}
+flowfuel.station.open-charge-map.api-key=${OPEN_CHARGE_MAP_API_KEY:}
+```
+
+- [ ] **Step 2: Verify the app still boots**
+
+Run: `mvn -q spring-boot:run -Dspring-boot.run.profiles=default &` then check `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health` returns `200`, then stop the process. If there's no convenient way to background-check in this environment, instead run: `mvn -q test-compile` to confirm no property-binding errors, and rely on Task 7's `@SpringBootTest` passing as the real proof the context loads with these properties.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/main/resources/application.properties
+git commit -m "feat(station): add Overpass/Open Charge Map config properties"
+```
+
+---
+
+### Task 9: Redis integration test (cache + rate limit, real Redis via Testcontainers)
+
+**Files:**
+- Create: `src/test/java/com/devappmobile/flowfuel/station/StationRedisIntegrationTest.java`
+
+This mirrors `RateLimitFilterIntegrationTest` (`src/test/java/com/devappmobile/flowfuel/config/RateLimitFilterIntegrationTest.java`): real Redis via Testcontainers, `flowfuel.rate-limit.enabled=true` so the shared `ProxyManager<String>`/`StatefulRedisConnection` beans exist, and `OverpassClient`/`OpenChargeMapClient` mocked via `@MockBean` (no real network calls in CI) so the test isolates cache + rate-limit behavior end to end.
+
+- [ ] **Step 1: Write the test**
 
 ```java
 package com.devappmobile.flowfuel.station;
@@ -1446,6 +1544,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -1502,6 +1601,8 @@ class StationRedisIntegrationTest {
     void findNearby_11aChamadaMesmoUsuarioNoMesmoMinuto_lancaRateLimitExceeded() {
         Long userId = 9002L;
         for (int i = 0; i < 10; i++) {
+            // varia lat/lng para nao bater no cache e garantir que o rate limit
+            // e avaliado antes do cache em cada chamada
             stationService.findNearby(userId, -8.0 - (i * 0.01), -34.0, 5000);
         }
 
@@ -1511,75 +1612,35 @@ class StationRedisIntegrationTest {
 }
 ```
 
-- [x] **Step 2: Rodar e confirmar sucesso**
+- [ ] **Step 2: Run test to verify it passes**
 
-Run: `./mvnw -q test -Dtest=StationRedisIntegrationTest`
-Expected: PASS (2 testes) — requer Docker disponível no ambiente de teste.
+Run: `mvn -q test -Dtest=StationRedisIntegrationTest`
+Expected: PASS (requires Docker available for Testcontainers, same requirement as the existing `RateLimitFilterIntegrationTest`)
 
-- [x] **Step 3: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add src/test/java/com/devappmobile/flowfuel/station/StationRedisIntegrationTest.java
-git commit -m "test(station): verify cache and rate limit with real Redis via Testcontainers"
+git commit -m "test(station): add Redis-backed integration test for cache and rate limit"
 ```
 
 ---
 
-### Task 9: Campos de endereço (street/houseNumber) — follow-up
+### Task 10: Full suite run and final check
 
-**Files:**
-- Modify: `src/main/java/com/devappmobile/flowfuel/station/dto/StationResponseDTO.java`
-- Modify: `src/main/java/com/devappmobile/flowfuel/station/client/OverpassClient.java`
-- Modify: `src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClient.java`
-- Modify: `src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapPoiDTO.java`
+- [ ] **Step 1: Run the full test suite**
 
-Adicionado depois do endpoint inicial (commit `7fe4b61`) para dar ao app um
-endereço legível — extrai `addr:street`/`addr:housenumber` das tags do
-Overpass e `AddressLine1` do Open Charge Map. Já coberto pelos testes de
-`OverpassClientTest`/`OpenChargeMapClientTest` mostrados nas Tasks 3/4
-acima — não adicionaram teste próprio, os campos são verificados via
-serialização/deserialização normal do `StationResponseDTO`.
+Run: `mvn -q test`
+Expected: BUILD SUCCESS, all tests pass including the pre-existing suite (confirms the `ObjectProvider` fix in Task 5/6 didn't break any context loading elsewhere).
 
-- [x] **Step 1: Adicionar campos ao DTO** (ver Task 2, Step 4 — já inclui `street`/`houseNumber`)
-- [x] **Step 2: Extrair de `tags.get("addr:street")` / `tags.get("addr:housenumber")` no OverpassClient** (ver Task 3, Step 4)
-- [x] **Step 3: Extrair de `AddressInfo.AddressLine1` no OpenChargeMapClient** (ver Task 4, Step 4)
-- [x] **Step 4: Commit**
+- [ ] **Step 2: Spot-check OpenAPI/Swagger picks up the new endpoint (springdoc is already on the classpath)**
+
+Run: `mvn -q spring-boot:run &` then `curl -s http://localhost:8080/v3/api-docs | grep -o '"/api/v1/stations/nearby"'`, then stop the process (`kill %1` or equivalent). Expected: the path string is present in the generated OpenAPI doc.
+
+- [ ] **Step 3: Final commit if anything was left uncommitted**
 
 ```bash
-git add src/main/java/com/devappmobile/flowfuel/station/dto/StationResponseDTO.java \
-        src/main/java/com/devappmobile/flowfuel/station/client/OverpassClient.java \
-        src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapClient.java \
-        src/main/java/com/devappmobile/flowfuel/station/client/OpenChargeMapPoiDTO.java
-git commit -m "feat(station): add street and house number to station response"
+git status
 ```
 
----
-
-## Provisionamento — verificado em produção (2026-07-02)
-
-`OPEN_CHARGE_MAP_API_KEY` já está configurada como secret no Fly.io
-(`flyctl secrets list` confirma o valor deployado) — o risco descrito no
-design ("sem a key, `type: ELECTRIC` nunca aparece") **não está ativo em
-produção**. Nenhuma ação pendente aqui.
-
-## Self-Review
-
-**Spec coverage:**
-- Contrato da API (query params, response shape, status codes 400/401/429/503) → Tasks 1, 6, 7.
-- Overpass (postos de combustível, node/way/relation) → Task 3.
-- Open Charge Map (estações elétricas, key opcional/exigida) → Task 4.
-- Haversine para distância uniforme entre fontes → Task 2.
-- Cache Redis raw, TTL 10min, fail-open → Task 5.
-- Rate limit por usuário via Bucket4j, fail-open → Task 6.
-- Fallback parcial/total entre as duas fontes → Task 6.
-- Teste de integração com Redis real → Task 8.
-- Street/houseNumber (adicionado pós-implementação inicial) → Task 9.
-- Provisionamento (`OPEN_CHARGE_MAP_API_KEY`) → verificado deployado, ver seção acima.
-
-**Placeholder scan:** nenhum "TBD"/"implementar depois" — todo bloco de
-código deste documento foi copiado dos arquivos reais do repositório
-(`src/main/...`, `src/test/...`), não reconstruído de memória.
-
-**Type consistency:** `StationResponseDTO`, `StationType`, `HaversineUtil.distanceMeters`,
-`StationCacheService.get/put`, `StationService.findNearby` usados de forma
-consistente em todas as tasks (mesmas assinaturas do código-fonte real).
+If clean, nothing to do — every task above already committed its own changes.
