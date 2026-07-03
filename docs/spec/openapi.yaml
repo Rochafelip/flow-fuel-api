@@ -760,6 +760,43 @@ paths:
           $ref: "#/components/responses/ForbiddenNotOwner"
         "404":
           $ref: "#/components/responses/NotFound"
+    get:
+      tags: [Vehicles]
+      summary: Baixa a foto do veículo
+      description: >-
+        Retorna os bytes da imagem armazenada (Content-Type do storage), ou
+        204 se o veículo não tiver foto cadastrada.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Bytes da imagem
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "204":
+          description: Veículo não possui foto
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Vehicles]
+      summary: Remove a foto do veículo
+      description: >-
+        Remove a foto do storage e zera Vehicle.photo. Sempre retorna 204,
+        mesmo se o veículo já não tiver foto (no-op silencioso).
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "204":
+          description: Foto removida (ou já não existia)
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/vehicles/{id}/active:
     put:
