@@ -302,4 +302,91 @@ class VehicleServiceTest {
         assertThat(vehicle.getPhoto()).isEqualTo("vehicle_photos/10_foto.jpg");
         verify(storageService).upload(eq(arquivo), eq("vehicle_photos/10_foto.jpg"));
     }
+
+    // --- getPhoto ---
+
+    @Test
+    void getPhoto_semFoto_retorna204() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        org.springframework.http.ResponseEntity<byte[]> response = vehicleService.getPhoto(owner, 10L);
+
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        verify(storageService, never()).download(any());
+    }
+
+    @Test
+    void getPhoto_comFoto_retornaBytesEContentType() {
+        vehicle.setPhoto("vehicle_photos/10_foto.jpg");
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        byte[] bytes = new byte[]{1, 2, 3};
+        when(storageService.download("vehicle_photos/10_foto.jpg"))
+                .thenReturn(new StorageService.StorageObject(bytes, "image/jpeg"));
+
+        org.springframework.http.ResponseEntity<byte[]> response = vehicleService.getPhoto(owner, 10L);
+
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(bytes);
+        assertThat(response.getHeaders().getFirst("Content-Type")).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void getPhoto_donoDiferente_lancaForbidden() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
+
+        assertThatThrownBy(() -> vehicleService.getPhoto(otherUser, 10L))
+                .isInstanceOf(ForbiddenOperationException.class);
+    }
+
+    @Test
+    void getPhoto_veiculoInexistente_lancaResourceNotFound() {
+        when(vehicleRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> vehicleService.getPhoto(owner, 99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // --- removePhoto ---
+
+    @Test
+    void removePhoto_comFoto_deletaDoStorageEZeraCampo() {
+        vehicle.setPhoto("vehicle_photos/10_foto.jpg");
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(vehicleRepository.save(any())).thenReturn(vehicle);
+
+        vehicleService.removePhoto(owner, 10L);
+
+        verify(storageService).delete("vehicle_photos/10_foto.jpg");
+        assertThat(vehicle.getPhoto()).isNull();
+    }
+
+    @Test
+    void removePhoto_semFoto_naoChamaStorageDelete() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        vehicleService.removePhoto(owner, 10L);
+
+        verify(storageService, never()).delete(any());
+        verify(vehicleRepository, never()).save(any());
+    }
+
+    @Test
+    void removePhoto_donoDiferente_lancaForbidden() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
+                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
+
+        assertThatThrownBy(() -> vehicleService.removePhoto(otherUser, 10L))
+                .isInstanceOf(ForbiddenOperationException.class);
+    }
+
+    @Test
+    void removePhoto_veiculoInexistente_lancaResourceNotFound() {
+        when(vehicleRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> vehicleService.removePhoto(owner, 99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
 }

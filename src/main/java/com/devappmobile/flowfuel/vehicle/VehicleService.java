@@ -12,6 +12,7 @@ import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -119,6 +120,29 @@ public class VehicleService {
         vehicleRepository.save(vehicle);
 
         return new PhotoUploadResponse("/vehicles/" + id + "/photo");
+    }
+
+    public ResponseEntity<byte[]> getPhoto(User user, Long id) {
+        Vehicle vehicle = findOwned(user, id);
+        String key = vehicle.getPhoto();
+        if (key == null) {
+            return ResponseEntity.noContent().build();
+        }
+
+        StorageService.StorageObject obj = storageService.download(key);
+        return ResponseEntity.ok()
+                .header("Content-Type", obj.contentType())
+                .body(obj.data());
+    }
+
+    public void removePhoto(User user, Long id) {
+        Vehicle vehicle = findOwned(user, id);
+        String key = vehicle.getPhoto();
+        if (key != null) {
+            storageService.delete(key);
+            vehicle.setPhoto(null);
+            vehicleRepository.save(vehicle);
+        }
     }
 
     public String getConsumptionUnit(Vehicle vehicle) {
