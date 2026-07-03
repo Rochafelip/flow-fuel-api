@@ -22,6 +22,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.net.URI;
@@ -102,6 +103,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail pd = problemDetail(ErrorCode.REQUEST_MALFORMED,
                 "Corpo da requisição inválido ou ausente", path);
         return ResponseEntity.status(ErrorCode.REQUEST_MALFORMED.status()).body(pd);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ProblemDetail> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex,
+            HttpServletRequest req) {
+        String detail = "Arquivo excede o tamanho máximo permitido no upload";
+        logClientError(ErrorCode.BUSINESS_RULE_VIOLATED, req, detail);
+        return build(ErrorCode.BUSINESS_RULE_VIOLATED, detail, req.getRequestURI());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
