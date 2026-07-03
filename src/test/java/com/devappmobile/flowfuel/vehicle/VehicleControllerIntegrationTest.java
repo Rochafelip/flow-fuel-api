@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -208,5 +209,99 @@ class VehicleControllerIntegrationTest {
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(v2));
+    }
+
+    private static byte[] imagemJpegValida() throws Exception {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(10, 10,
+                java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "jpg", out);
+        return out.toByteArray();
+    }
+
+    @Test
+    void uploadPhoto_imagemValida_retorna200ComInternalUrl() throws Exception {
+        String token = obterToken("foto-ok@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", imagemJpegValida());
+
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", vehicleId)
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.internalUrl").value("/vehicles/" + vehicleId + "/photo"));
+    }
+
+    @Test
+    void uploadPhoto_tipoInvalido_retorna400() throws Exception {
+        String token = obterToken("foto-tipo-invalido@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        MockMultipartFile file = new MockMultipartFile("file", "foto.gif", "image/gif", new byte[100]);
+
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", vehicleId)
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATED"));
+    }
+
+    @Test
+    void uploadPhoto_arquivoAcimaDoLimiteDoServlet_retorna400() throws Exception {
+        String token = obterToken("foto-grande@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        byte[] arquivoGrande = new byte[6 * 1024 * 1024]; // acima de spring.servlet.multipart.max-file-size (5MB)
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", arquivoGrande);
+
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", vehicleId)
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATED"));
+    }
+
+    @Test
+    void uploadPhoto_donoDiferente_retorna403() throws Exception {
+        String tokenA = obterToken("foto-userA@test.com");
+        String tokenB = obterToken("foto-userB@test.com");
+        long vehicleId = criarVeiculo(tokenA);
+
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
+
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", vehicleId)
+                .file(file)
+                .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void uploadPhoto_veiculoInexistente_retorna404() throws Exception {
+        String token = obterToken("foto-404@test.com");
+
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", new byte[100]);
+
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", 999999L)
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getVehicleById_aposUploadDeFoto_retornaPhotoComoInternalUrl() throws Exception {
+        String token = obterToken("foto-get@test.com");
+        long vehicleId = criarVeiculo(token);
+
+        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", imagemJpegValida());
+        mockMvc.perform(multipart("/api/v1/vehicles/{id}/photo", vehicleId)
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/vehicles/{id}", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.photo").value("/vehicles/" + vehicleId + "/photo"));
     }
 }
