@@ -105,12 +105,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(ErrorCode.REQUEST_MALFORMED.status()).body(pd);
     }
 
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<ProblemDetail> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex,
-            HttpServletRequest req) {
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(@NonNull MaxUploadSizeExceededException ex,
+            @NonNull HttpHeaders headers, @NonNull HttpStatusCode status, @NonNull WebRequest request) {
+        String path = pathFromRequest(request);
         String detail = "Arquivo excede o tamanho máximo permitido no upload";
-        logClientError(ErrorCode.BUSINESS_RULE_VIOLATED, req, detail);
-        return build(ErrorCode.BUSINESS_RULE_VIOLATED, detail, req.getRequestURI());
+        logClientError(ErrorCode.BUSINESS_RULE_VIOLATED, path, detail);
+        ProblemDetail pd = problemDetail(ErrorCode.BUSINESS_RULE_VIOLATED, detail, path);
+        return ResponseEntity.status(ErrorCode.BUSINESS_RULE_VIOLATED.status()).body(pd);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
