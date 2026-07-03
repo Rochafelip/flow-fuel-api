@@ -2,6 +2,7 @@ package com.devappmobile.flowfuel.vehicle;
 
 import com.devappmobile.flowfuel.common.PageResponseDTO;
 import com.devappmobile.flowfuel.user.User;
+import com.devappmobile.flowfuel.vehicle.dto.PhotoUploadResponse;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import jakarta.validation.Valid;
@@ -11,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/vehicles")
@@ -73,5 +75,13 @@ public class VehicleController {
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
         vehicleService.deleteVehicle(user, id);
+    }
+
+    @PostMapping("/{id}/photo")
+    public PhotoUploadResponse uploadPhoto(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file) {
+        return vehicleService.uploadPhoto(user, id, file);
     }
 }
