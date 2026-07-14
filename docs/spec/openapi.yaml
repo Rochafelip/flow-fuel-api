@@ -31,6 +31,8 @@ tags:
     description: Estatísticas agregadas de consumo e gasto por veículo
   - name: AuditLogs
     description: Consulta de logs de auditoria (admin-only)
+  - name: Devices
+    description: Registro de tokens de dispositivo para push notification (FCM)
 
 paths:
   /:
@@ -1136,6 +1138,62 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenNotOwner"
 
+  /api/v1/devices:
+    post:
+      tags: [Devices]
+      summary: Registra (ou renova) o token FCM do dispositivo atual
+      description: >-
+        Upsert por token: se o token já existe (inclusive associado a outro
+        usuário — mesmo aparelho, conta diferente), é reatribuído ao usuário
+        autenticado. Chamado no login e sempre que o FCM renova o token
+        (`onNewToken`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenRequest"
+            examples:
+              default:
+                value:
+                  token: "dGhpcyBpcyBhIGZha2UgZmNtIHRva2Vu"
+                  platform: ANDROID
+      responses:
+        "200":
+          description: Token registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceTokenResponse"
+        "400":
+          description: Token ausente ou platform inválida
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+        "401":
+          description: Não autenticado
+  /api/v1/devices/{token}:
+    delete:
+      tags: [Devices]
+      summary: Remove o token de dispositivo do usuário autenticado
+      description: >-
+        Chamado no logout. Sempre retorna 204, mesmo se o token já não existir
+        (no-op silencioso) — mesma convenção de `DELETE /vehicles/{id}/photo`.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Token removido (ou já não existia)
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1750,3 +1808,23 @@ components:
           format: int64
         totalPages:
           type: integer
+
+    DeviceTokenRequest:
+      type: object
+      required: [token, platform]
+      properties:
+        token:
+          type: string
+          example: "dGhpcyBpcyBhIGZha2UgZmNtIHRva2Vu"
+        platform:
+          type: string
+          enum: [ANDROID]
+    DeviceTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "dGhpcyBpcyBhIGZha2UgZmNtIHRva2Vu"
+        platform:
+          type: string
+          enum: [ANDROID]
