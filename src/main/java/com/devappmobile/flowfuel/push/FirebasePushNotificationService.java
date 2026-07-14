@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,14 +42,20 @@ public class FirebasePushNotificationService implements PushNotificationService 
             return;
         }
 
-        Map<String, String> data = Map.of(
-                "title", payload.title(),
-                "body", payload.body(),
-                "deepLink", payload.deepLink(),
-                "type", payload.type());
+        Map<String, String> data = new HashMap<>();
+        putIfPresent(data, "title", payload.title());
+        putIfPresent(data, "body", payload.body());
+        putIfPresent(data, "deepLink", payload.deepLink());
+        putIfPresent(data, "type", payload.type());
 
         for (DeviceToken deviceToken : tokens) {
             sendToToken(userId, deviceToken, data);
+        }
+    }
+
+    private static void putIfPresent(Map<String, String> data, String key, String value) {
+        if (value != null) {
+            data.put(key, value);
         }
     }
 
@@ -61,11 +68,15 @@ public class FirebasePushNotificationService implements PushNotificationService 
             firebaseMessaging.send(message);
         } catch (FirebaseMessagingException ex) {
             if (ex.getMessagingErrorCode() == MessagingErrorCode.UNREGISTERED) {
-                log.warn("[PUSH] token invalido removido userId={} token={}", userId, deviceToken.getToken());
+                log.warn("[PUSH] token invalido removido userId={}", userId);
                 deviceTokenRepository.delete(deviceToken);
             } else {
-                log.error("[PUSH] falha ao enviar push userId={} token={}", userId, deviceToken.getToken(), ex);
+                log.error("[PUSH] falha ao enviar push userId={}", userId, ex);
             }
+        } catch (RuntimeException ex) {
+            // Nao deixa uma falha em um token (ex: Message malformada) abortar
+            // o processamento dos demais tokens do usuario.
+            log.error("[PUSH] falha inesperada ao enviar push userId={}", userId, ex);
         }
     }
 }
