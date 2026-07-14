@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.common;
 
+import com.devappmobile.flowfuel.devicetoken.DeviceToken;
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.user.User;
@@ -85,6 +86,26 @@ class AuthorizationHelperTest {
         assertThatThrownBy(() -> helper.ensureOwnsEvent(other, event))
                 .isInstanceOf(ForbiddenOperationException.class)
                 .hasMessageContaining("Evento não pertence ao usuário");
+    }
+
+    // --- ensureOwnsDeviceToken ---
+
+    @Test
+    void ensureOwnsDeviceToken_owner_doesNotThrow() {
+        DeviceToken deviceToken = new DeviceToken();
+        deviceToken.setUser(owner);
+
+        assertThatNoException().isThrownBy(() -> helper.ensureOwnsDeviceToken(owner, deviceToken));
+    }
+
+    @Test
+    void ensureOwnsDeviceToken_notOwner_throwsForbidden() {
+        DeviceToken deviceToken = new DeviceToken();
+        deviceToken.setUser(owner);
+
+        assertThatThrownBy(() -> helper.ensureOwnsDeviceToken(other, deviceToken))
+                .isInstanceOf(ForbiddenOperationException.class)
+                .hasMessageContaining("Token de dispositivo não pertence ao usuário");
     }
 
     // --- ensureIsAdmin ---

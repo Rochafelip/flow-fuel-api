@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.common;
 
+import com.devappmobile.flowfuel.devicetoken.DeviceToken;
 import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.user.User;
@@ -25,6 +26,12 @@ public class AuthorizationHelper {
     public void ensureOwnsEvent(User user, VehicleEvent event) {
         if (!event.getVehicle().getUser().getId().equals(user.getId())) {
             throw new ForbiddenOperationException("Evento não pertence ao usuário");
+        }
+    }
+
+    public void ensureOwnsDeviceToken(User user, DeviceToken deviceToken) {
+        if (!deviceToken.getUser().getId().equals(user.getId())) {
+            throw new ForbiddenOperationException("Token de dispositivo não pertence ao usuário");
         }
     }
 
