@@ -2,6 +2,7 @@ package com.devappmobile.flowfuel.vehicleevent;
 
 import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.common.PageResponseDTO;
+import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
@@ -14,10 +15,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class VehicleEventService {
+
+    private static final Set<VehicleEventType> GUEST_ALLOWED_TYPES =
+            Set.of(VehicleEventType.FUEL, VehicleEventType.CAR_WASH, VehicleEventType.TIRES, VehicleEventType.OTHER);
 
     private final VehicleEventRepository vehicleEventRepository;
     private final VehicleRepository vehicleRepository;
@@ -27,7 +32,12 @@ public class VehicleEventService {
         Vehicle vehicle = vehicleRepository.findById(request.getVehicleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", request.getVehicleId()));
 
-        authorizationHelper.ensureOwnsVehicle(user, vehicle);
+        authorizationHelper.ensureOwnsOrHasGuestAccess(user, vehicle);
+
+        boolean isGuest = !vehicle.getUser().getId().equals(user.getId());
+        if (isGuest && !GUEST_ALLOWED_TYPES.contains(request.getType())) {
+            throw new ForbiddenOperationException("Categoria não permitida para veículo emprestado");
+        }
 
         VehicleEvent event = new VehicleEvent();
         event.setVehicle(vehicle);
