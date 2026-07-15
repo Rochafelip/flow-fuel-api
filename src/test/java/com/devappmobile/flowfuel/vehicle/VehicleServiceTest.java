@@ -189,6 +189,35 @@ class VehicleServiceTest {
         verify(vehicleRepository, never()).save(any());
     }
 
+    @Test
+    void updateOdometer_convidadoComShareAtivo_atualiza() {
+        User convidado = new User("convidado@test.com", "hash", "Convidado");
+        convidado.setId(2L);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(vehicleRepository.save(any(Vehicle.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        VehicleResponseDTO response = vehicleService.updateOdometer(convidado, 10L, 1050);
+
+        assertThat(response.getCurrentKm()).isEqualTo(1050);
+        verify(authorizationHelper).ensureOwnsOrHasGuestAccess(convidado, vehicle);
+    }
+
+    @Test
+    void updateOdometer_usuarioSemAcesso_lancaForbidden() {
+        User semAcesso = new User("semacesso@test.com", "hash", "Sem Acesso");
+        semAcesso.setId(3L);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário nem está compartilhado com ele"))
+                .when(authorizationHelper).ensureOwnsOrHasGuestAccess(semAcesso, vehicle);
+
+        assertThatThrownBy(() -> vehicleService.updateOdometer(semAcesso, 10L, 1050))
+                .isInstanceOf(ForbiddenOperationException.class);
+
+        verify(vehicleRepository, never()).save(any());
+    }
+
     // --- setActiveVehicle ---
 
     @Test

@@ -64,7 +64,7 @@ public class VehicleService {
     }
 
     public VehicleResponseDTO updateOdometer(User user, Long id, Integer currentKm) {
-        Vehicle vehicle = findOwned(user, id);
+        Vehicle vehicle = findOwnedOrGuestAccess(user, id);
         if (currentKm < vehicle.getCurrentKm()) {
             throw new BusinessRuleException("Odômetro não pode ser menor que o atual");
         }
@@ -158,6 +158,13 @@ public class VehicleService {
         Vehicle vehicle = vehicleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Veículo", id));
         authorizationHelper.ensureOwnsVehicle(user, vehicle);
+        return vehicle;
+    }
+
+    private Vehicle findOwnedOrGuestAccess(User user, Long id) {
+        Vehicle vehicle = vehicleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Veículo", id));
+        authorizationHelper.ensureOwnsOrHasGuestAccess(user, vehicle);
         return vehicle;
     }
 

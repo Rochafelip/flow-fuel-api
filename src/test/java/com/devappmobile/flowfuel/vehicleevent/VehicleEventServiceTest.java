@@ -105,8 +105,8 @@ class VehicleEventServiceTest {
     void create_usuarioNaoEDono_lancaForbidden() {
         VehicleEventRequestDTO dto = buildRequest();
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
-        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário"))
-                .when(authorizationHelper).ensureOwnsVehicle(otherUser, vehicle);
+        doThrow(new ForbiddenOperationException("Veículo não pertence ao usuário nem está compartilhado com ele"))
+                .when(authorizationHelper).ensureOwnsOrHasGuestAccess(otherUser, vehicle);
 
         assertThatThrownBy(() -> vehicleEventService.create(otherUser, dto))
                 .isInstanceOf(ForbiddenOperationException.class);
@@ -120,6 +120,57 @@ class VehicleEventServiceTest {
 
         assertThatThrownBy(() -> vehicleEventService.create(owner, dto))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void create_convidadoComShareAtivoECategoriaPermitida_criaEvento() {
+        VehicleEventRequestDTO request = new VehicleEventRequestDTO();
+        request.setVehicleId(10L);
+        request.setType(VehicleEventType.FUEL);
+        request.setAmount(BigDecimal.valueOf(150.00));
+        request.setEventDate(LocalDate.now());
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(vehicleEventRepository.save(any(VehicleEvent.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        VehicleEventResponseDTO response = vehicleEventService.create(otherUser, request);
+
+        assertThat(response.getType()).isEqualTo(VehicleEventType.FUEL);
+        verify(authorizationHelper).ensureOwnsOrHasGuestAccess(otherUser, vehicle);
+    }
+
+    @Test
+    void create_convidadoComShareAtivoECategoriaNaoPermitida_lancaForbidden() {
+        VehicleEventRequestDTO request = new VehicleEventRequestDTO();
+        request.setVehicleId(10L);
+        request.setType(VehicleEventType.INSURANCE);
+        request.setAmount(BigDecimal.valueOf(500.00));
+        request.setEventDate(LocalDate.now());
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+
+        assertThatThrownBy(() -> vehicleEventService.create(otherUser, request))
+                .isInstanceOf(ForbiddenOperationException.class);
+
+        verify(vehicleEventRepository, never()).save(any());
+    }
+
+    @Test
+    void create_donoLancandoQualquerCategoria_naoRestringe() {
+        VehicleEventRequestDTO request = new VehicleEventRequestDTO();
+        request.setVehicleId(10L);
+        request.setType(VehicleEventType.INSURANCE);
+        request.setAmount(BigDecimal.valueOf(500.00));
+        request.setEventDate(LocalDate.now());
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(vehicleEventRepository.save(any(VehicleEvent.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        VehicleEventResponseDTO response = vehicleEventService.create(owner, request);
+
+        assertThat(response.getType()).isEqualTo(VehicleEventType.INSURANCE);
     }
 
     // --- getById ---

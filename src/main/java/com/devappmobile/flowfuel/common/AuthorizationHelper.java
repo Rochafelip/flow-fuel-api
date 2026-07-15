@@ -6,10 +6,18 @@ import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEvent;
+import com.devappmobile.flowfuel.vehicleshare.VehicleShareRepository;
+import com.devappmobile.flowfuel.vehicleshare.VehicleShareStatus;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+
 @Component
+@RequiredArgsConstructor
 public class AuthorizationHelper {
+
+    private final VehicleShareRepository vehicleShareRepository;
 
     public void ensureOwnsVehicle(User user, Vehicle vehicle) {
         if (!vehicle.getUser().getId().equals(user.getId())) {
@@ -38,6 +46,17 @@ public class AuthorizationHelper {
     public void ensureIsAdmin(User user) {
         if (!user.isAdmin()) {
             throw new ForbiddenOperationException("Operação restrita a administradores");
+        }
+    }
+
+    public void ensureOwnsOrHasGuestAccess(User user, Vehicle vehicle) {
+        if (vehicle.getUser().getId().equals(user.getId())) {
+            return;
+        }
+        boolean temAcessoDeConvidado = vehicleShareRepository.existsByVehicleIdAndGuestIdAndStatusAndExpiresAtAfter(
+                vehicle.getId(), user.getId(), VehicleShareStatus.ACTIVE, LocalDateTime.now());
+        if (!temAcessoDeConvidado) {
+            throw new ForbiddenOperationException("Veículo não pertence ao usuário nem está compartilhado com ele");
         }
     }
 }
