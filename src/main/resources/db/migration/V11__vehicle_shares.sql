@@ -11,4 +11,7 @@ CREATE TABLE vehicle_shares (
 );
 
 CREATE INDEX idx_vehicle_shares_guest_status ON vehicle_shares(guest_id, status);
-CREATE INDEX idx_vehicle_shares_vehicle_status ON vehicle_shares(vehicle_id, status);
+
+-- So permite um share PENDING/ACTIVE por veiculo por vez.
+CREATE UNIQUE INDEX idx_vehicle_shares_active_unique ON vehicle_shares(vehicle_id)
+    WHERE status IN ('PENDING', 'ACTIVE');
