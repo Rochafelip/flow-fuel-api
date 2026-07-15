@@ -92,6 +92,45 @@ public class VehicleShareService {
         return VehicleShareResponseDTO.from(vehicleShareRepository.save(share));
     }
 
+    @Transactional
+    public void revoke(User owner, Long id) {
+        VehicleShare share = vehicleShareRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Compartilhamento", id));
+        if (!share.getOwner().getId().equals(owner.getId())) {
+            throw new ForbiddenOperationException("Compartilhamento não pertence ao usuário");
+        }
+        share.setStatus(VehicleShareStatus.REVOKED);
+        share.setRespondedAt(LocalDateTime.now());
+        vehicleShareRepository.save(share);
+    }
+
+    public VehicleShareResponseDTO getForVehicle(User user, Long vehicleId) {
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Veículo", vehicleId));
+        authorizationHelper.ensureOwnsVehicle(user, vehicle);
+
+        return vehicleShareRepository
+                .findFirstByVehicleIdAndStatusInOrderByCreatedAtDesc(vehicleId,
+                        List.of(VehicleShareStatus.PENDING, VehicleShareStatus.ACTIVE))
+                .map(VehicleShareResponseDTO::from)
+                .orElse(null);
+    }
+
+    public List<VehicleShareResponseDTO> listPendingForGuest(User user) {
+        return vehicleShareRepository.findByGuestIdAndStatus(user.getId(), VehicleShareStatus.PENDING)
+                .stream()
+                .map(VehicleShareResponseDTO::from)
+                .toList();
+    }
+
+    public List<VehicleShareResponseDTO> listActiveForGuest(User user) {
+        return vehicleShareRepository
+                .findByGuestIdAndStatusAndExpiresAtAfter(user.getId(), VehicleShareStatus.ACTIVE, LocalDateTime.now())
+                .stream()
+                .map(VehicleShareResponseDTO::from)
+                .toList();
+    }
+
     private void ensureIsGuest(User user, VehicleShare share) {
         if (!share.getGuest().getId().equals(user.getId())) {
             throw new ForbiddenOperationException("Convite não pertence ao usuário");

@@ -196,4 +196,77 @@ class VehicleShareServiceTest {
         assertThatThrownBy(() -> vehicleShareService.reject(owner, 100L))
                 .isInstanceOf(ForbiddenOperationException.class);
     }
+
+    @Test
+    void revoke_donoCorreto_marcaRevoked() {
+        VehicleShare share = shareExistente(VehicleShareStatus.ACTIVE);
+        when(vehicleShareRepository.findById(100L)).thenReturn(Optional.of(share));
+        when(vehicleShareRepository.save(any(VehicleShare.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        vehicleShareService.revoke(owner, 100L);
+
+        ArgumentCaptor<VehicleShare> captor = ArgumentCaptor.forClass(VehicleShare.class);
+        verify(vehicleShareRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(VehicleShareStatus.REVOKED);
+    }
+
+    @Test
+    void revoke_naoEhODono_lancaForbidden() {
+        VehicleShare share = shareExistente(VehicleShareStatus.ACTIVE);
+        when(vehicleShareRepository.findById(100L)).thenReturn(Optional.of(share));
+
+        assertThatThrownBy(() -> vehicleShareService.revoke(guest, 100L))
+                .isInstanceOf(ForbiddenOperationException.class);
+
+        verify(vehicleShareRepository, never()).save(any());
+    }
+
+    @Test
+    void getForVehicle_comShareAtivo_retornaDto() {
+        Vehicle owned = vehicle;
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(owned));
+        VehicleShare share = shareExistente(VehicleShareStatus.ACTIVE);
+        when(vehicleShareRepository.findFirstByVehicleIdAndStatusInOrderByCreatedAtDesc(eq(10L), any()))
+                .thenReturn(Optional.of(share));
+
+        VehicleShareResponseDTO response = vehicleShareService.getForVehicle(owner, 10L);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(100L);
+    }
+
+    @Test
+    void getForVehicle_semShare_retornaNull() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(vehicleShareRepository.findFirstByVehicleIdAndStatusInOrderByCreatedAtDesc(eq(10L), any()))
+                .thenReturn(Optional.empty());
+
+        VehicleShareResponseDTO response = vehicleShareService.getForVehicle(owner, 10L);
+
+        assertThat(response).isNull();
+    }
+
+    @Test
+    void listPendingForGuest_retornaConvitesPendentesDoUsuario() {
+        VehicleShare share = shareExistente(VehicleShareStatus.PENDING);
+        when(vehicleShareRepository.findByGuestIdAndStatus(2L, VehicleShareStatus.PENDING))
+                .thenReturn(List.of(share));
+
+        List<VehicleShareResponseDTO> pendentes = vehicleShareService.listPendingForGuest(guest);
+
+        assertThat(pendentes).hasSize(1);
+        assertThat(pendentes.get(0).getStatus()).isEqualTo(VehicleShareStatus.PENDING);
+    }
+
+    @Test
+    void listActiveForGuest_retornaVeiculosComShareAtivo() {
+        VehicleShare share = shareExistente(VehicleShareStatus.ACTIVE);
+        when(vehicleShareRepository.findByGuestIdAndStatusAndExpiresAtAfter(eq(2L), eq(VehicleShareStatus.ACTIVE), any()))
+                .thenReturn(List.of(share));
+
+        List<VehicleShareResponseDTO> ativos = vehicleShareService.listActiveForGuest(guest);
+
+        assertThat(ativos).hasSize(1);
+    }
 }
