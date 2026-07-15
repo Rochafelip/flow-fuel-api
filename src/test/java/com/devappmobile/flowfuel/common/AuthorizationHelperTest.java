@@ -6,13 +6,25 @@ import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEvent;
+import com.devappmobile.flowfuel.vehicleshare.VehicleShareRepository;
+import com.devappmobile.flowfuel.vehicleshare.VehicleShareStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class AuthorizationHelperTest {
+
+    @Mock
+    private VehicleShareRepository vehicleShareRepository;
 
     private AuthorizationHelper helper;
     private User owner;
@@ -21,7 +33,7 @@ class AuthorizationHelperTest {
 
     @BeforeEach
     void setUp() {
-        helper = new AuthorizationHelper();
+        helper = new AuthorizationHelper(vehicleShareRepository);
 
         owner = new User("owner@test.com", "hash", "Owner");
         owner.setId(1L);
@@ -122,5 +134,31 @@ class AuthorizationHelperTest {
         assertThatThrownBy(() -> helper.ensureIsAdmin(other))
                 .isInstanceOf(ForbiddenOperationException.class)
                 .hasMessageContaining("Operação restrita a administradores");
+    }
+
+    // --- ensureOwnsOrHasGuestAccess ---
+
+    @Test
+    void ensureOwnsOrHasGuestAccess_owner_doesNotThrowAndSkipsRepository() {
+        assertThatNoException().isThrownBy(() -> helper.ensureOwnsOrHasGuestAccess(owner, vehicle));
+    }
+
+    @Test
+    void ensureOwnsOrHasGuestAccess_guestWithActiveShare_doesNotThrow() {
+        when(vehicleShareRepository.existsByVehicleIdAndGuestIdAndStatusAndExpiresAtAfter(
+                eq(10L), eq(2L), eq(VehicleShareStatus.ACTIVE), any()))
+                .thenReturn(true);
+
+        assertThatNoException().isThrownBy(() -> helper.ensureOwnsOrHasGuestAccess(other, vehicle));
+    }
+
+    @Test
+    void ensureOwnsOrHasGuestAccess_guestWithoutActiveShare_throwsForbidden() {
+        when(vehicleShareRepository.existsByVehicleIdAndGuestIdAndStatusAndExpiresAtAfter(
+                eq(10L), eq(2L), eq(VehicleShareStatus.ACTIVE), any()))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> helper.ensureOwnsOrHasGuestAccess(other, vehicle))
+                .isInstanceOf(ForbiddenOperationException.class);
     }
 }
