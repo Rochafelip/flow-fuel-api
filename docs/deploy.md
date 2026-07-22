@@ -88,6 +88,34 @@ flyctl secrets unset FLOWFUEL_RATE_LIMIT_ENABLED -a flowfuel-api
 
 **Validação pós-deploy**: como o filtro é fail-open, um `REDIS_URL` incorreto não gera erro visível — requisições continuam passando normalmente. Confirmar manualmente que o rate-limiting está de fato ativo fazendo requisições repetidas a um endpoint limitado (ex. `/api/v1/auth/login`) até obter `429` com header `Retry-After`.
 
+### 8. Cloudflare R2 (armazenamento de imagens)
+
+Imagens (foto de perfil, foto de veículo) ficam no Cloudflare R2, não no Postgres —
+ver [docs/superpowers/specs/2026-07-22-r2-image-storage-design.md](superpowers/specs/2026-07-22-r2-image-storage-design.md).
+
+```bash
+npm install -g wrangler
+wrangler login
+wrangler r2 bucket create flowfuel-images
+wrangler r2 bucket dev-url enable flowfuel-images
+```
+
+O Access Key ID / Secret Access Key (credenciais S3-compatible) não são gerados pelo
+Wrangler — criar em **Cloudflare dashboard → R2 → Manage R2 API Tokens → Create API Token**
+(permissão *Object Read & Write*, escopo no bucket `flowfuel-images`).
+
+```bash
+flyctl secrets set \
+  CLOUDFLARE_R2_ACCOUNT_ID="<account-id>" \
+  CLOUDFLARE_R2_ACCESS_KEY_ID="<access-key-id>" \
+  CLOUDFLARE_R2_SECRET_ACCESS_KEY="<secret-access-key>" \
+  CLOUDFLARE_R2_BUCKET="flowfuel-images" \
+  CLOUDFLARE_R2_PUBLIC_BASE_URL="https://pub-<hash>.r2.dev"
+```
+
+Domínio próprio (`images.flowfuel.app`) fica pendente até `flowfuel.app` estar com o DNS
+na Cloudflare — hoje as imagens são servidas pela URL pública padrão do R2 (`*.r2.dev`).
+
 ## Problemas encontrados e correções (histórico real do primeiro deploy)
 
 1. **`fly.toml` inválido** — health check sem `type` (`http`/`tcp`). Corrigido (depois sobrescrito pelo próprio `flyctl launch`, que regenerou o arquivo num formato válido sem precisar do campo).
@@ -101,6 +129,7 @@ flyctl secrets unset FLOWFUEL_RATE_LIMIT_ENABLED -a flowfuel-api
 - **Envio de e-mail de ativação de conta**: configurar via os secrets `MAIL_*` do passo 5 (SendGrid). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o link de ativação só vai para o log da aplicação.
 - **Senha do Postgres do Neon foi exposta em texto puro numa conversa antes de ser usada.** Recomendado resetar a senha no painel do Neon (Settings > Reset password) por precaução.
 - **Upload de foto de perfil** agora usa o próprio Postgres (tabela `stored_files`, ver `docs/superpowers/specs/2026-06-18-photo-storage-in-postgres-design.md`) — sem dependência externa de storage.
+- **Imagens no R2, não mais no Postgres**: `PostgresStorageService`/tabela `stored_files` ficam como backup temporário pós-migração (ver design de 2026-07-22); remover numa entrega futura depois de confirmar estabilidade em produção.
 - **Auto-deploy do GitHub Actions (`flyctl launch`) falhou ao tentar setar `FLY_API_TOKEN`** nos secrets do repositório (sem permissão da CLI `gh` configurada). Isso foi corrigido depois: [.github/workflows/fly-deploy.yml](../.github/workflows/fly-deploy.yml) já dispara `flyctl deploy` a cada push em `main`, usando o secret `FLY_API_TOKEN`. [.github/workflows/ci.yml](../.github/workflows/ci.yml) ainda referencia Deploy Hooks do Render (`RENDER_DEPLOY_HOOK_*`) e não é usado nesse caminho — é resquício do setup anterior e candidato a limpeza.
 
 ## Comandos úteis
