@@ -174,4 +174,28 @@ class UserProfileServiceTest {
         assertThatThrownBy(() -> userProfileService.updateUserProfile(99L, dto))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
+
+    // --- getProfilePictureUrl ---
+
+    @Test
+    void getProfilePictureUrl_comFoto_retornaUrlPublica() {
+        existingUser.setProfilePicture("profile_pictures/1_foto.jpg");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(storageService.publicUrl("profile_pictures/1_foto.jpg"))
+                .thenReturn("https://pub-test.r2.dev/profile_pictures/1_foto.jpg");
+
+        String url = userProfileService.getProfilePictureUrl(1L);
+
+        assertThat(url).isEqualTo("https://pub-test.r2.dev/profile_pictures/1_foto.jpg");
+    }
+
+    @Test
+    void getProfilePictureUrl_semFoto_retornaNull() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+
+        String url = userProfileService.getProfilePictureUrl(1L);
+
+        assertThat(url).isNull();
+        verify(storageService, never()).publicUrl(any());
+    }
 }

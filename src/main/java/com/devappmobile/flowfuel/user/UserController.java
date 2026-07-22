@@ -21,7 +21,6 @@ public class UserController {
     private final UserProfileService userProfileService;
     private final PasswordResetService passwordResetService;
     private final AccountActivationService accountActivationService;
-    private final com.devappmobile.flowfuel.storage.StorageService storageService;
 
     /**
      * Cadastra a conta (status PENDING_ACTIVATION) e dispara o email de ativacao.
@@ -96,15 +95,12 @@ public class UserController {
     }
 
     @GetMapping("/{userId}/profile-picture")
-    public ResponseEntity<byte[]> getProfilePicture(@PathVariable Long userId,
+    public ResponseEntity<Void> getProfilePicture(@PathVariable Long userId,
             @AuthenticationPrincipal User authUser) {
         ensureSelf(authUser, userId);
-        String key = userProfileService.getProfilePictureKey(userId);
-        if (key == null) return ResponseEntity.noContent().build();
-        com.devappmobile.flowfuel.storage.StorageService.StorageObject obj = storageService.download(key);
-        return ResponseEntity.ok()
-                .header("Content-Type", obj.contentType())
-                .body(obj.data());
+        String url = userProfileService.getProfilePictureUrl(userId);
+        if (url == null) return ResponseEntity.noContent().build();
+        return ResponseEntity.status(HttpStatus.FOUND).location(java.net.URI.create(url)).build();
     }
 
     @DeleteMapping("/{userId}/profile-picture")

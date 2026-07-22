@@ -1,7 +1,6 @@
 package com.devappmobile.flowfuel.storage;
 
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
-import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.stereotype.Service;
@@ -10,6 +9,11 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
+/**
+ * Mantida apenas como historico/rollback ate a remocao definitiva (fora de escopo do design
+ * de 2026-07-22 — ver "Fora de escopo"). Nao e mais o bean ativo: R2StorageService assumiu
+ * esse papel apos a migracao dos dados existentes.
+ */
 @Service
 @RequiredArgsConstructor
 public class PostgresStorageService implements StorageService {
@@ -32,10 +36,9 @@ public class PostgresStorageService implements StorageService {
     }
 
     @Override
-    public StorageObject download(String key) {
-        StoredFile storedFile = storedFileRepository.findById(key)
-                .orElseThrow(() -> new ResourceNotFoundException("Arquivo", key));
-        return new StorageObject(storedFile.getData(), storedFile.getContentType());
+    public String publicUrl(String key) {
+        throw new UnsupportedOperationException(
+                "PostgresStorageService nao suporta publicUrl; imagens sao servidas via R2StorageService");
     }
 
     private byte[] resize(MultipartFile file) {

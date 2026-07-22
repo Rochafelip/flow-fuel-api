@@ -338,25 +338,24 @@ class VehicleServiceTest {
     void getPhoto_semFoto_retorna204() {
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
 
-        org.springframework.http.ResponseEntity<byte[]> response = vehicleService.getPhoto(owner, 10L);
+        org.springframework.http.ResponseEntity<Void> response = vehicleService.getPhoto(owner, 10L);
 
         assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
-        verify(storageService, never()).download(any());
+        verify(storageService, never()).publicUrl(any());
     }
 
     @Test
-    void getPhoto_comFoto_retornaBytesEContentType() {
+    void getPhoto_comFoto_retorna302ComLocation() {
         vehicle.setPhoto("vehicle_photos/10_foto.jpg");
         when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
-        byte[] bytes = new byte[]{1, 2, 3};
-        when(storageService.download("vehicle_photos/10_foto.jpg"))
-                .thenReturn(new StorageService.StorageObject(bytes, "image/jpeg"));
+        when(storageService.publicUrl("vehicle_photos/10_foto.jpg"))
+                .thenReturn("https://pub-test.r2.dev/vehicle_photos/10_foto.jpg");
 
-        org.springframework.http.ResponseEntity<byte[]> response = vehicleService.getPhoto(owner, 10L);
+        org.springframework.http.ResponseEntity<Void> response = vehicleService.getPhoto(owner, 10L);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
-        assertThat(response.getBody()).isEqualTo(bytes);
-        assertThat(response.getHeaders().getFirst("Content-Type")).isEqualTo("image/jpeg");
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.FOUND);
+        assertThat(response.getHeaders().getLocation())
+                .isEqualTo(java.net.URI.create("https://pub-test.r2.dev/vehicle_photos/10_foto.jpg"));
     }
 
     @Test

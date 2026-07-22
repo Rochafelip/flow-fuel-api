@@ -8,7 +8,5 @@ public interface StorageService {
 
     void delete(String key);
 
-    record StorageObject(byte[] data, String contentType) {}
-
-    StorageObject download(String key);
+    String publicUrl(String key);
 }
