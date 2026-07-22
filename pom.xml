@@ -134,6 +134,12 @@
 			<artifactId>thumbnailator</artifactId>
 			<version>0.4.20</version>
 		</dependency>
+		<!-- Cliente S3-compatible para Cloudflare R2 (armazenamento de imagens) -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+			<version>2.49.0</version>
+		</dependency>
 		<!-- Rate limiting (FLOW-009): token bucket por IP nos endpoints de autenticacao -->
 		<dependency>
 			<groupId>com.bucket4j</groupId>
