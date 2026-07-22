@@ -7,12 +7,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
-import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import javax.imageio.ImageIO;
@@ -22,10 +19,8 @@ import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class R2StorageServiceTest {
@@ -36,7 +31,7 @@ class R2StorageServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new R2StorageService(s3Client, "test-bucket");
+        service = new R2StorageService(s3Client, "test-bucket", "https://pub-test.r2.dev");
     }
 
     private byte[] pngOf(int width, int height) throws IOException {
@@ -86,15 +81,8 @@ class R2StorageServiceTest {
     }
 
     @Test
-    void download_retornaBytesEContentTypeDoS3() {
-        byte[] data = {1, 2, 3};
-        GetObjectResponse response = GetObjectResponse.builder().contentType("image/jpeg").build();
-        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
-                .thenReturn(ResponseBytes.fromByteArray(response, data));
-
-        StorageService.StorageObject result = service.download("users/1/photo.png");
-
-        assertThat(result.data()).isEqualTo(data);
-        assertThat(result.contentType()).isEqualTo("image/jpeg");
+    void publicUrl_concatenaBaseUrlEKey() {
+        assertThat(service.publicUrl("users/1/photo.png"))
+                .isEqualTo("https://pub-test.r2.dev/users/1/photo.png");
     }
 }

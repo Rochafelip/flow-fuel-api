@@ -3,20 +3,19 @@ package com.devappmobile.flowfuel.storage;
 import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 @Service
+@Primary
 public class R2StorageService implements StorageService {
 
     private static final int MAX_DIMENSION = 512;
@@ -24,10 +23,14 @@ public class R2StorageService implements StorageService {
 
     private final S3Client s3Client;
     private final String bucket;
+    private final String publicBaseUrl;
 
-    public R2StorageService(S3Client s3Client, @Value("${flowfuel.storage.r2.bucket:}") String bucket) {
+    public R2StorageService(S3Client s3Client,
+            @Value("${flowfuel.storage.r2.bucket:}") String bucket,
+            @Value("${flowfuel.storage.r2.public-base-url:}") String publicBaseUrl) {
         this.s3Client = s3Client;
         this.bucket = bucket;
+        this.publicBaseUrl = publicBaseUrl;
     }
 
     @Override
@@ -50,10 +53,8 @@ public class R2StorageService implements StorageService {
     }
 
     @Override
-    public StorageObject download(String key) {
-        ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
-                GetObjectRequest.builder().bucket(bucket).key(key).build());
-        return new StorageObject(object.asByteArray(), object.response().contentType());
+    public String publicUrl(String key) {
+        return publicBaseUrl + "/" + key;
     }
 
     private byte[] resize(MultipartFile file) {

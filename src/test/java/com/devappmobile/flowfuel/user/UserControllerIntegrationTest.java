@@ -9,11 +9,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import com.devappmobile.flowfuel.storage.StorageService;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -26,6 +30,7 @@ class UserControllerIntegrationTest {
     @Autowired private VehicleRepository vehicleRepository;
     @Autowired private RefuelRepository refuelRepository;
     @Autowired private ObjectMapper objectMapper;
+    @MockBean private StorageService storageService;
 
     @BeforeEach
     void limparBanco() {
@@ -798,5 +803,39 @@ class UserControllerIntegrationTest {
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         assertThat(body.get("email").asText()).isEqualTo("novoemail@test.com");
+    }
+
+    @Test
+    void getProfilePicture_aposUpload_retorna302ComLocation() throws Exception {
+        MvcResult registerResult = registrar("foto-perfil@test.com", "senha123");
+        long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("foto-perfil@test.com", "senha123");
+
+        when(storageService.upload(any(), any())).thenReturn("profile_pictures/" + userId + "_foto.png");
+        when(storageService.publicUrl(any()))
+                .thenAnswer(inv -> "https://pub-test.r2.dev/" + inv.getArgument(0, String.class));
+
+        mockMvc.perform(multipart("/api/v1/auth/{id}/upload-profile-picture", userId)
+                .file(new org.springframework.mock.web.MockMultipartFile(
+                        "file", "foto.png", "image/png", new byte[]{1, 2, 3}))
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/auth/{id}/profile-picture", userId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location",
+                        org.hamcrest.Matchers.startsWith("https://pub-test.r2.dev/profile_pictures/")));
+    }
+
+    @Test
+    void getProfilePicture_semFotoUpada_retorna204() throws Exception {
+        MvcResult registerResult = registrar("foto-perfil204@test.com", "senha123");
+        long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
+        String token = obterToken("foto-perfil204@test.com", "senha123");
+
+        mockMvc.perform(get("/api/v1/auth/{id}/profile-picture", userId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
     }
 }

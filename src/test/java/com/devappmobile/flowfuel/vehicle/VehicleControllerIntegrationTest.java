@@ -10,12 +10,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import com.devappmobile.flowfuel.storage.StorageService;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -28,12 +33,18 @@ class VehicleControllerIntegrationTest {
     @Autowired private VehicleRepository vehicleRepository;
     @Autowired private RefuelRepository refuelRepository;
     @Autowired private ObjectMapper objectMapper;
+    @MockBean private StorageService storageService;
 
     @BeforeEach
     void limparBanco() {
         refuelRepository.deleteAll();
         vehicleRepository.deleteAll();
         userRepository.deleteAll();
+
+        reset(storageService);
+        when(storageService.upload(any(), any())).thenAnswer(inv -> inv.getArgument(1));
+        when(storageService.publicUrl(any()))
+                .thenAnswer(inv -> "https://pub-test.r2.dev/" + inv.getArgument(0, String.class));
     }
 
     private String obterToken(String email) throws Exception {
@@ -316,7 +327,7 @@ class VehicleControllerIntegrationTest {
     }
 
     @Test
-    void getPhoto_aposUpload_retorna200ComBytes() throws Exception {
+    void getPhoto_aposUpload_retorna302ComLocation() throws Exception {
         String token = obterToken("foto-get200@test.com");
         long vehicleId = criarVeiculo(token);
 
@@ -328,8 +339,9 @@ class VehicleControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/vehicles/{id}/photo", vehicleId)
                 .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.IMAGE_JPEG));
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location",
+                        org.hamcrest.Matchers.startsWith("https://pub-test.r2.dev/vehicle_photos/" + vehicleId)));
     }
 
     @Test

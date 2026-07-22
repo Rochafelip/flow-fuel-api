@@ -12,11 +12,13 @@ import com.devappmobile.flowfuel.vehicle.dto.VehicleRequestDTO;
 import com.devappmobile.flowfuel.vehicle.dto.VehicleResponseDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URI;
 import java.util.List;
 
 @Service
@@ -122,17 +124,15 @@ public class VehicleService {
         return new PhotoUploadResponse("/vehicles/" + id + "/photo");
     }
 
-    public ResponseEntity<byte[]> getPhoto(User user, Long id) {
+    public ResponseEntity<Void> getPhoto(User user, Long id) {
         Vehicle vehicle = findOwned(user, id);
         String key = vehicle.getPhoto();
         if (key == null) {
             return ResponseEntity.noContent().build();
         }
 
-        StorageService.StorageObject obj = storageService.download(key);
-        return ResponseEntity.ok()
-                .header("Content-Type", obj.contentType())
-                .body(obj.data());
+        String url = storageService.publicUrl(key);
+        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(url)).build();
     }
 
     public void removePhoto(User user, Long id) {

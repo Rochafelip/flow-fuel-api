@@ -1,6 +1,5 @@
 package com.devappmobile.flowfuel.storage;
 
-import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,21 +71,9 @@ class PostgresStorageServiceTest {
     }
 
     @Test
-    void download_keyExistente_retornaDadosEContentType() throws IOException {
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "foto.png", "image/png", pngOf(100, 100));
-        service.upload(file, "users/1/photo.png");
-
-        StorageService.StorageObject result = service.download("users/1/photo.png");
-
-        assertThat(result.contentType()).isEqualTo("image/jpeg");
-        assertThat(result.data()).isNotEmpty();
-    }
-
-    @Test
-    void download_keyInexistente_lancaResourceNotFound() {
-        assertThatThrownBy(() -> service.download("nao-existe"))
-                .isInstanceOf(ResourceNotFoundException.class);
+    void publicUrl_lancaUnsupportedOperation() {
+        assertThatThrownBy(() -> service.publicUrl("users/1/photo.png"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
