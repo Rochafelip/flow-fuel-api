@@ -4,6 +4,7 @@ import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import net.coobird.thumbnailator.Thumbnails;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -11,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 @Service
+@Primary
 @RequiredArgsConstructor
 public class PostgresStorageService implements StorageService {
 
