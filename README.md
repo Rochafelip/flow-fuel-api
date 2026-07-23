@@ -263,7 +263,7 @@ Fonte única em [ErrorCode.java](src/main/java/com/devappmobile/flowfuel/common/
 
 ## Deploy (produção)
 
-A API está em produção na Fly.io (app `flowfuel-api`, região `gru`), com deploy automático a cada push em `main` ([fly-deploy.yml](.github/workflows/fly-deploy.yml)). Banco gerenciado (Neon Postgres) e secrets configurados via `flyctl secrets` — lista completa em [docs/deploy.md](docs/deploy.md).
+A API está em produção na Fly.io (app `flowfuel-api`, região `gru`), com deploy automático a cada push em `main` ([fly-deploy.yml](.github/workflows/fly-deploy.yml)). Banco gerenciado (Supabase Postgres) e secrets configurados via `flyctl secrets` — lista completa em [docs/deploy.md](docs/deploy.md).
 
 Pontos de atenção do ambiente atual:
 

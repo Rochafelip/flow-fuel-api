@@ -1,11 +1,11 @@
-# Deploy em produção (Fly.io + Neon)
+# Deploy em produção (Fly.io + Supabase)
 
 Setup de produção para uso pessoal (1-2 usuários), 24/7, sem custo de servidor dedicado.
 
 ## Arquitetura
 
 - **API**: Fly.io, região `gru` (São Paulo), 1 máquina `shared-cpu-1x` / **512MB RAM**, sempre ativa (`min_machines_running = 1`, sem auto-stop).
-- **Banco**: Neon.tech (Postgres serverless, free tier), região `sa-east-1`.
+- **Banco**: Supabase (Postgres), região `sa-east-1`, conexão via Session Pooler (Supavisor) — a conexão direta (porta 5432 no host `db.<projeto>.supabase.co`) só resolve em IPv6 nesse projeto (sem add-on de IPv4), por isso o app usa o host `aws-0-sa-east-1.pooler.supabase.com`, que também é IPv4. Migrado do Neon em 2026-07-23 (dump/restore via `pg_dump`/`pg_restore`, ver histórico da migração).
 - Config da máquina: [fly.toml](../fly.toml).
 - Imagem: [Dockerfile](../Dockerfile) (build multi-stage Maven + JRE Alpine).
 
@@ -19,9 +19,9 @@ URL pública: `https://flowfuel-api.fly.dev` (HTTPS automático via Fly).
 
 ## Passo a passo (do zero)
 
-### 1. Banco de dados (Neon)
-1. Criar conta em neon.tech, criar projeto (região mais próxima — `sa-east-1` no nosso caso).
-2. Copiar a connection string (`postgresql://user:pass@host/db?sslmode=require`).
+### 1. Banco de dados (Supabase)
+1. Criar conta em supabase.com, criar projeto (região mais próxima — `sa-east-1` no nosso caso).
+2. Em **Connect → Session pooler**, copiar a connection string (formato `postgresql://postgres.<ref>:<senha>@aws-0-<regiao>.pooler.supabase.com:5432/postgres`). Usar o **Session pooler**, não a conexão direta (IPv6-only nesse plano) nem o Transaction pooler (não suporta prepared statements, usados pelo Hibernate).
 
 ### 2. Instalar a CLI do Fly e logar
 ```bash
@@ -44,9 +44,9 @@ flyctl launch --no-deploy --copy-config --yes
 ### 5. Configurar os secrets
 ```bash
 flyctl secrets set \
-  SPRING_DATASOURCE_URL="jdbc:postgresql://<host-neon>/<db>?sslmode=require" \
-  SPRING_DATASOURCE_USERNAME="<user-neon>" \
-  SPRING_DATASOURCE_PASSWORD="<senha-neon>" \
+  SPRING_DATASOURCE_URL="jdbc:postgresql://aws-0-<regiao>.pooler.supabase.com:5432/postgres?sslmode=require" \
+  SPRING_DATASOURCE_USERNAME="postgres.<ref-do-projeto-supabase>" \
+  SPRING_DATASOURCE_PASSWORD="<senha-do-banco-supabase>" \
   JWT_SECRET="$(openssl rand -hex 32)" \
   FLOWFUEL_RATE_LIMIT_ENABLED=false \
   MANAGEMENT_HEALTH_MAIL_ENABLED=false \
@@ -127,7 +127,8 @@ na Cloudflare — hoje as imagens são servidas pela URL pública padrão do R2 
 
 - **Rate limiting está em fail-open em produção** (sem Redis provisionado, ver passo 7) — os endpoints de auth (`/login`, `/register`, `/forgot-password`, `/resend-activation`) não têm proteção contra brute-force até que o Redis do passo 7 seja provisionado e `REDIS_URL` configurada.
 - **Envio de e-mail de ativação de conta**: configurar via os secrets `MAIL_*` do passo 5 (SendGrid). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o link de ativação só vai para o log da aplicação.
-- **Senha do Postgres do Neon foi exposta em texto puro numa conversa antes de ser usada.** Recomendado resetar a senha no painel do Neon (Settings > Reset password) por precaução.
+- **Migração Neon → Supabase (2026-07-23)**: dump completo do Neon (`pg_dump --schema=public --no-owner --no-acl --format=custom`) e restore no Supabase (`pg_restore --clean --if-exists`), rodado via Docker (`postgres:17`, sem instalar client localmente). Contagem de linhas conferida em todas as 12 tabelas antes do cutover. Secrets `SPRING_DATASOURCE_*` do Fly atualizados para o Supabase e app redeployado com sucesso (Flyway validou as 11 migrations sem diffs). **O projeto Neon não foi apagado** — manter como backup por alguns dias até validar estabilidade em produção, depois desprovisionar.
+- **Senha do Postgres do Neon e do Supabase foram expostas em texto puro numa conversa antes de serem usadas.** Recomendado resetar a senha do banco no painel do Supabase (Settings → Database → Reset database password) por precaução, e atualizar o secret `SPRING_DATASOURCE_PASSWORD` no Fly em seguida.
 - **Upload de foto de perfil** agora usa o próprio Postgres (tabela `stored_files`, ver `docs/superpowers/specs/2026-06-18-photo-storage-in-postgres-design.md`) — sem dependência externa de storage.
 - **Imagens no R2, não mais no Postgres**: `PostgresStorageService`/tabela `stored_files` ficam como backup temporário pós-migração (ver design de 2026-07-22); remover numa entrega futura depois de confirmar estabilidade em produção.
 - **Auto-deploy do GitHub Actions (`flyctl launch`) falhou ao tentar setar `FLY_API_TOKEN`** nos secrets do repositório (sem permissão da CLI `gh` configurada). Isso foi corrigido depois: [.github/workflows/fly-deploy.yml](../.github/workflows/fly-deploy.yml) já dispara `flyctl deploy` a cada push em `main`, usando o secret `FLY_API_TOKEN`. [.github/workflows/ci.yml](../.github/workflows/ci.yml) ainda referencia Deploy Hooks do Render (`RENDER_DEPLOY_HOOK_*`) e não é usado nesse caminho — é resquício do setup anterior e candidato a limpeza.
