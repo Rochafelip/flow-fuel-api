@@ -22,7 +22,7 @@ COPY --from=build /app/target/*.jar app.jar
 
 USER app
 
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"
+ENV JAVA_OPTS="-XX:+UseSerialGC -XX:MaxRAMPercentage=65 -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -Xss512k -XX:TieredStopAtLevel=1"
 ENV PORT=10000
 
 EXPOSE 10000
