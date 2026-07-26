@@ -21,6 +21,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+import java.util.List;
+
 @Configuration
 @EnableWebSecurity
 @EnableConfigurationProperties(CorsProperties.class)
@@ -91,6 +93,12 @@ public class SecurityConfig {
         configuration.setAllowedMethods(corsProperties.getAllowedMethods());
         configuration.setAllowedHeaders(corsProperties.getAllowedHeaders());
         configuration.setAllowCredentials(corsProperties.isAllowCredentials());
+        // Content-Disposition precisa ser exposto explicitamente: por padrao o
+        // navegador so deixa JS ler uma lista minima de headers "safelisted"
+        // em respostas cross-origin, e Content-Disposition nao esta nela — o
+        // frontend web usa esse header pra nomear o arquivo em downloads
+        // (ex.: GET /exports/refuels).
+        configuration.setExposedHeaders(List.of("Content-Disposition"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

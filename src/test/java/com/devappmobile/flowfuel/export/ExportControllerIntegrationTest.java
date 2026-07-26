@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestPropertySource(properties = "app.cors.allowed-origins=http://localhost:5173")
 class ExportControllerIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
@@ -114,6 +116,18 @@ class ExportControllerIntegrationTest {
                         org.hamcrest.Matchers.containsString("flowfuel-refuels-toyota-corolla-")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         savedRefuelDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))));
+    }
+
+    @Test
+    void exportRefuels_comOriginPermitido_exposeContentDispositionViaCors() throws Exception {
+        mockMvc.perform(get("/api/v1/exports/refuels")
+                .param("vehicleId", vehicle.getId().toString())
+                .param("format", "csv")
+                .header("Authorization", "Bearer " + ownerToken)
+                .header("Origin", "http://localhost:5173"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Expose-Headers",
+                        org.hamcrest.Matchers.containsString("Content-Disposition")));
     }
 
     @Test
