@@ -121,8 +121,15 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
                             </td>
                           </tr>
                           <tr>
-                            <td style="padding-bottom:32px;" align="center">
+                            <td style="padding-bottom:16px;" align="center">
                               <a href="%s" style="display:inline-block;background-color:#111;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;padding:16px 32px;border-radius:8px;">Ativar conta</a>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding-bottom:32px;">
+                              <p style="margin:0;font-size:12px;color:#bbb;line-height:1.6;word-break:break-all;">
+                                Se o botão não funcionar, copie e cole este link no navegador:<br>%s
+                              </p>
                             </td>
                           </tr>
                           <tr>
@@ -138,7 +145,7 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
                   </table>
                 </body>
                 </html>"""
-                .formatted(greetingName, validity, activationUrl);
+                .formatted(greetingName, validity, activationUrl, activationUrl);
     }
 
     /** Converte o TTL em minutos numa frase amigavel: "1 hora", "2 horas", "30 minutos". */
