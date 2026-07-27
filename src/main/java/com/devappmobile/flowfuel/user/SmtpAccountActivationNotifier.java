@@ -12,6 +12,9 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Implementacao real de {@link AccountActivationNotifier}: envia o link de
  * ativacao por email via {@link JavaMailSender} (SMTP). Ativa quando
@@ -48,6 +51,7 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
     public void sendActivationLink(User user, String activationToken) {
         String greetingName = user.getName() != null ? " " + user.getName() : "";
         String validity = formatValidity(tokenTtlMinutes);
+        String activationUrl = buildActivationUrl(user.getEmail(), activationToken);
 
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -57,8 +61,8 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
             helper.setTo(user.getEmail());
             helper.setSubject("Ative sua conta FlowFuel");
             // setText(plain, html): o cliente escolhe o melhor que conseguir renderizar.
-            helper.setText(plainBody(greetingName, validity, activationToken),
-                    htmlBody(greetingName, validity, activationToken));
+            helper.setText(plainBody(greetingName, validity, activationUrl),
+                    htmlBody(greetingName, validity, activationUrl));
 
             mailSender.send(message);
             log.info("[ACCOUNT-ACTIVATION] email enviado userId={} email={}", user.getId(), user.getEmail());
@@ -70,21 +74,27 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
         }
     }
 
-    private static String plainBody(String greetingName, String validity, String activationToken) {
+    /** Mesmo formato de URL usado por {@link LoggingAccountActivationNotifier}. */
+    private String buildActivationUrl(String email, String activationToken) {
+        String encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
+        return linkBaseUrl + "?token=" + activationToken + "&email=" + encodedEmail;
+    }
+
+    private static String plainBody(String greetingName, String validity, String activationUrl) {
         return """
                 Olá%s,
 
-                Cole o código abaixo na tela de ativação do app FlowFuel (válido por %s):
+                Clique no link abaixo para ativar sua conta FlowFuel (válido por %s):
 
                 %s
 
                 Se você não criou esta conta, ignore este email.
 
                 — Equipe FlowFuel"""
-                .formatted(greetingName, validity, activationToken);
+                .formatted(greetingName, validity, activationUrl);
     }
 
-    private static String htmlBody(String greetingName, String validity, String activationToken) {
+    private static String htmlBody(String greetingName, String validity, String activationUrl) {
         return """
                 <!DOCTYPE html>
                 <html lang="pt-BR">
@@ -106,19 +116,13 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
                           <tr>
                             <td style="padding-bottom:32px;">
                               <p style="margin:0;font-size:15px;color:#555;line-height:1.6;">
-                                Use o código abaixo para ativar sua conta. Ele expira em %s.
+                                Clique no botão abaixo para ativar sua conta. O link expira em %s.
                               </p>
                             </td>
                           </tr>
                           <tr>
-                            <td style="padding-bottom:32px;">
-                              <table role="presentation" width="100%%" cellpadding="0" cellspacing="0">
-                                <tr>
-                                  <td style="background-color:#f5f5f5;border-radius:8px;padding:24px;text-align:center;">
-                                    <span style="font-family:'Courier New',Courier,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:#111;user-select:all;">%s</span>
-                                  </td>
-                                </tr>
-                              </table>
+                            <td style="padding-bottom:32px;" align="center">
+                              <a href="%s" style="display:inline-block;background-color:#111;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;padding:16px 32px;border-radius:8px;">Ativar conta</a>
                             </td>
                           </tr>
                           <tr>
@@ -134,7 +138,7 @@ public class SmtpAccountActivationNotifier implements AccountActivationNotifier 
                   </table>
                 </body>
                 </html>"""
-                .formatted(greetingName, validity, activationToken);
+                .formatted(greetingName, validity, activationUrl);
     }
 
     /** Converte o TTL em minutos numa frase amigavel: "1 hora", "2 horas", "30 minutos". */
