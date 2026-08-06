@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
@@ -67,6 +68,16 @@ class OverpassClientTest {
 
         assertThat(result.get(2).getPlaceId()).isEqualTo("osm:relation/111");
         assertThat(result.get(2).getName()).isEqualTo("Posto de combustível");
+    }
+
+    @Test
+    void findFuelStations_enviaHeaderUserAgentIdentificavel() {
+        server.expect(requestTo(BASE_URL))
+                .andExpect(method(POST))
+                .andExpect(header("User-Agent", "FlowFuel/1.0 (+https://flowfuel-api.fly.dev)"))
+                .andRespond(withSuccess("{\"elements\":[]}", MediaType.APPLICATION_JSON));
+
+        client.findFuelStations(-8.05, -34.90, 5000);
     }
 
     @Test

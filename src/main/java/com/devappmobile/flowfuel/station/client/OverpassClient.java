@@ -23,6 +23,7 @@ import java.util.Objects;
 public class OverpassClient {
 
     private static final Logger log = LoggerFactory.getLogger(OverpassClient.class);
+    private static final String USER_AGENT = "FlowFuel/1.0 (+https://flowfuel-api.fly.dev)";
 
     private final RestClient restClient;
     private final String baseUrl;
@@ -40,6 +41,7 @@ public class OverpassClient {
             OverpassResponseDTO response = restClient.post()
                     .uri(baseUrl)
                     .contentType(MediaType.TEXT_PLAIN)
+                    .header("User-Agent", USER_AGENT)
                     .body(query)
                     .retrieve()
                     .body(OverpassResponseDTO.class);

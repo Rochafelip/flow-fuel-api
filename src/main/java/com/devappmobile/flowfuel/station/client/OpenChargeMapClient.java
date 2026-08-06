@@ -26,6 +26,7 @@ import java.util.Objects;
 public class OpenChargeMapClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenChargeMapClient.class);
+    private static final String USER_AGENT = "FlowFuel/1.0 (+https://flowfuel-api.fly.dev)";
 
     private final RestClient restClient;
     private final String baseUrl;
@@ -46,6 +47,7 @@ public class OpenChargeMapClient {
                     .uri(baseUrl + "?latitude={lat}&longitude={lng}&distance={distance}&distanceunit=KM&maxresults=20",
                             lat, lng, radiusKm)
                     .headers(headers -> {
+                        headers.set("User-Agent", USER_AGENT);
                         if (!apiKey.isBlank()) {
                             headers.set("X-API-Key", apiKey);
                         }

@@ -80,6 +80,16 @@ class OpenChargeMapClientTest {
     }
 
     @Test
+    void findChargingStations_enviaHeaderUserAgentIdentificavel() {
+        OpenChargeMapClient client = buildClient("");
+        server.expect(method(GET))
+                .andExpect(header("User-Agent", "FlowFuel/1.0 (+https://flowfuel-api.fly.dev)"))
+                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        client.findChargingStations(-8.05, -34.90, 5000);
+    }
+
+    @Test
     void findChargingStations_ocmRetorna500_lancaExternalServiceUnavailable() {
         OpenChargeMapClient client = buildClient("");
         server.expect(method(GET)).andRespond(withServerError());
