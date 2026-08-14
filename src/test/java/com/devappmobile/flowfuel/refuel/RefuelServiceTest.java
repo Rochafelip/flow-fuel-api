@@ -95,6 +95,45 @@ class RefuelServiceTest {
     }
 
     @Test
+    void createRefuel_comPosto_gravaSnapshotDoPosto() {
+        RefuelRequestDTO dto = buildRequest(1500, 40.0, 5.89);
+        dto.setStationName("Posto Ipiranga");
+        dto.setStationAddress("Rua Augusta, 100");
+        dto.setStationLatitude(-23.55);
+        dto.setStationLongitude(-46.63);
+
+        Refuel saved = new Refuel();
+        saved.setId(1L);
+        saved.setOdometer(1500);
+        saved.setKmSinceLastRefuel(500);
+        saved.setEnergyAmount(BigDecimal.valueOf(40.0));
+        saved.setPricePerUnit(BigDecimal.valueOf(5.89));
+        saved.setVehicle(vehicle);
+        saved.setStationName("Posto Ipiranga");
+        saved.setStationAddress("Rua Augusta, 100");
+        saved.setStationLatitude(-23.55);
+        saved.setStationLongitude(-46.63);
+
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.findTopByVehicleIdOrderByOdometerDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.save(any(Refuel.class))).thenReturn(saved);
+        when(vehicleRepository.save(any(Vehicle.class))).thenReturn(vehicle);
+
+        RefuelResponseDTO response = refuelService.createRefuel(owner, dto);
+
+        assertThat(response.getStationName()).isEqualTo("Posto Ipiranga");
+        assertThat(response.getStationAddress()).isEqualTo("Rua Augusta, 100");
+        assertThat(response.getStationLatitude()).isEqualTo(-23.55);
+        assertThat(response.getStationLongitude()).isEqualTo(-46.63);
+        verify(refuelRepository).save(argThat(r ->
+                "Posto Ipiranga".equals(r.getStationName())
+                        && "Rua Augusta, 100".equals(r.getStationAddress())
+                        && Double.valueOf(-23.55).equals(r.getStationLatitude())
+                        && Double.valueOf(-46.63).equals(r.getStationLongitude())
+        ));
+    }
+
+    @Test
     void createRefuel_odometroMenorQueUltimo_lancaBusinessRule() {
         Refuel lastRefuel = new Refuel();
         lastRefuel.setOdometer(2000);
@@ -259,6 +298,56 @@ class RefuelServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(response.getId()).isEqualTo(5L);
+    }
+
+    // --- updateRefuel ---
+
+    @Test
+    void updateRefuel_comPosto_atualizaSnapshotDoPosto() {
+        Refuel existing = new Refuel();
+        existing.setId(1L);
+        existing.setOdometer(1500);
+        existing.setEnergyAmount(BigDecimal.valueOf(40.0));
+        existing.setPricePerUnit(BigDecimal.valueOf(5.89));
+        existing.setRefuelType(RefuelType.FUEL);
+        existing.setVehicle(vehicle);
+
+        RefuelRequestDTO dto = new RefuelRequestDTO();
+        dto.setStationName("Posto Shell");
+        dto.setStationAddress("Av. Paulista, 900");
+        dto.setStationLatitude(-23.56);
+        dto.setStationLongitude(-46.65);
+
+        when(refuelRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(refuelRepository.save(any(Refuel.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RefuelResponseDTO response = refuelService.updateRefuel(owner, 1L, dto);
+
+        assertThat(response.getStationName()).isEqualTo("Posto Shell");
+        assertThat(response.getStationAddress()).isEqualTo("Av. Paulista, 900");
+        assertThat(response.getStationLatitude()).isEqualTo(-23.56);
+        assertThat(response.getStationLongitude()).isEqualTo(-46.65);
+    }
+
+    @Test
+    void updateRefuel_semPostoNaRequisicao_removePostoExistente() {
+        Refuel existing = new Refuel();
+        existing.setId(1L);
+        existing.setOdometer(1500);
+        existing.setEnergyAmount(BigDecimal.valueOf(40.0));
+        existing.setPricePerUnit(BigDecimal.valueOf(5.89));
+        existing.setRefuelType(RefuelType.FUEL);
+        existing.setVehicle(vehicle);
+        existing.setStationName("Posto Antigo");
+
+        RefuelRequestDTO dto = new RefuelRequestDTO();
+
+        when(refuelRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(refuelRepository.save(any(Refuel.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RefuelResponseDTO response = refuelService.updateRefuel(owner, 1L, dto);
+
+        assertThat(response.getStationName()).isNull();
     }
 
     // --- getRefuelById ---

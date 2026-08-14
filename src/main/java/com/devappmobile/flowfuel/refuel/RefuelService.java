@@ -58,6 +58,10 @@ public class RefuelService {
         refuel.setKmSinceLastRefuel(request.getOdometer() - lastOdometer);
         refuel.setRefuelType(refuelType);
         refuel.setVehicle(vehicle);
+        refuel.setStationName(request.getStationName());
+        refuel.setStationAddress(request.getStationAddress());
+        refuel.setStationLatitude(request.getStationLatitude());
+        refuel.setStationLongitude(request.getStationLongitude());
 
         Refuel saved = refuelRepository.save(refuel);
 
@@ -128,6 +132,11 @@ public class RefuelService {
         }
 
         if (request.getFullTank() != null) refuel.setFullTank(request.getFullTank());
+
+        refuel.setStationName(request.getStationName());
+        refuel.setStationAddress(request.getStationAddress());
+        refuel.setStationLatitude(request.getStationLatitude());
+        refuel.setStationLongitude(request.getStationLongitude());
 
         return RefuelResponseDTO.from(refuelRepository.save(refuel));
     }
