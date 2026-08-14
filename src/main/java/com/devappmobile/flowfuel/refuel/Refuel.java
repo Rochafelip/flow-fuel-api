@@ -51,6 +51,18 @@ public class Refuel {
     @Column(name = "refuel_type", nullable = false, length = 16)
     private RefuelType refuelType;
 
+    @Column(name = "station_name")
+    private String stationName;
+
+    @Column(name = "station_address")
+    private String stationAddress;
+
+    @Column(name = "station_latitude")
+    private Double stationLatitude;
+
+    @Column(name = "station_longitude")
+    private Double stationLongitude;
+
     @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "vehicle_id", nullable = false)
