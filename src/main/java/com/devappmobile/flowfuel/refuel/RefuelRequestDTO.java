@@ -33,4 +33,16 @@ public class RefuelRequestDTO {
     @Schema(description = "Tipo do abastecimento. Obrigatório para veículos HYBRID; inferido para COMBUSTION (FUEL) e ELECTRIC (ELECTRIC).",
             nullable = true, example = "FUEL")
     private RefuelType refuelType;
+
+    @Schema(description = "Snapshot opcional do posto escolhido pelo usuário no momento do abastecimento.", nullable = true)
+    private String stationName;
+
+    @Schema(nullable = true)
+    private String stationAddress;
+
+    @Schema(nullable = true)
+    private Double stationLatitude;
+
+    @Schema(nullable = true)
+    private Double stationLongitude;
 }

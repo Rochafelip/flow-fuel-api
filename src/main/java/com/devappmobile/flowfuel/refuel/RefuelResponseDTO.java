@@ -26,6 +26,10 @@ public class RefuelResponseDTO {
     private BigDecimal totalAmount;
     private Boolean fullTank;
     private RefuelType refuelType;
+    private String stationName;
+    private String stationAddress;
+    private Double stationLatitude;
+    private Double stationLongitude;
 
     public static RefuelResponseDTO from(Refuel r) {
         return RefuelResponseDTO.builder()
@@ -39,6 +43,10 @@ public class RefuelResponseDTO {
                 .totalAmount(r.getTotalAmount())
                 .fullTank(r.getFullTank())
                 .refuelType(r.getRefuelType())
+                .stationName(r.getStationName())
+                .stationAddress(r.getStationAddress())
+                .stationLatitude(r.getStationLatitude())
+                .stationLongitude(r.getStationLongitude())
                 .build();
     }
 }
