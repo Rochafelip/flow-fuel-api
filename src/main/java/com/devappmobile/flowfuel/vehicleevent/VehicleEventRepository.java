@@ -18,6 +18,11 @@ public interface VehicleEventRepository extends JpaRepository<VehicleEvent, Long
     @Query("SELECT SUM(e.amount) FROM VehicleEvent e WHERE e.vehicle.id = :vehicleId")
     Optional<BigDecimal> getTotalAmountByVehicleId(@Param("vehicleId") Long vehicleId);
 
+    @Query("SELECT new com.devappmobile.flowfuel.vehicleevent.VehicleEventTypeAmountProjection(e.type, SUM(e.amount)) "
+            + "FROM VehicleEvent e WHERE e.vehicle.id = :vehicleId GROUP BY e.type")
+    List<VehicleEventTypeAmountProjection> getTotalAmountByVehicleIdGroupedByType(
+            @Param("vehicleId") Long vehicleId);
+
     Page<VehicleEvent> findByVehicleIdOrderByEventDateDescCreatedAtDescIdDesc(
             Long vehicleId,
             Pageable pageable);

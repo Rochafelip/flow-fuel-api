@@ -11,6 +11,8 @@ import com.devappmobile.flowfuel.vehicle.EnergyType;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventType;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventTypeAmountProjection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -396,6 +398,75 @@ class DashboardServiceTest {
 
         // 148,42 (combustível) + 1572,23 (eventos: impostos, docs, outros) = 1720,65
         assertThat(body.getTotalOverallSpent()).isEqualByComparingTo(BigDecimal.valueOf(1720.65));
+    }
+
+    @Test
+    void getVehicleDashboard_semAbastecimentosEEventos_spendingBreakdownVazio() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(0L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getSpendingBreakdown()).isEmpty();
+    }
+
+    @Test
+    void getVehicleDashboard_combustivelDeRefuelsEEventoFuel_somamNaMesmaCategoria() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(1L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(100.00)));
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(20.0)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(5.0)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+        when(vehicleEventRepository.getTotalAmountByVehicleIdGroupedByType(10L)).thenReturn(List.of(
+                new VehicleEventTypeAmountProjection(VehicleEventType.FUEL, BigDecimal.valueOf(25.00))
+        ));
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getSpendingBreakdown()).hasSize(1);
+        SpendingCategoryDTO fuel = body.getSpendingBreakdown().get(0);
+        assertThat(fuel.category()).isEqualTo("FUEL");
+        assertThat(fuel.amount()).isEqualByComparingTo(BigDecimal.valueOf(125.00));
+    }
+
+    @Test
+    void getVehicleDashboard_maisDeCincoCategorias_mantemTop5EAgrupaRestoEmOutros() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(1L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(100)));
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(20.0)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(5.0)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+        when(vehicleEventRepository.getTotalAmountByVehicleIdGroupedByType(10L)).thenReturn(List.of(
+                new VehicleEventTypeAmountProjection(VehicleEventType.MAINTENANCE, BigDecimal.valueOf(90)),
+                new VehicleEventTypeAmountProjection(VehicleEventType.TAX, BigDecimal.valueOf(80)),
+                new VehicleEventTypeAmountProjection(VehicleEventType.INSURANCE, BigDecimal.valueOf(70)),
+                new VehicleEventTypeAmountProjection(VehicleEventType.DOCUMENTS, BigDecimal.valueOf(60)),
+                new VehicleEventTypeAmountProjection(VehicleEventType.CAR_WASH, BigDecimal.valueOf(50)),
+                new VehicleEventTypeAmountProjection(VehicleEventType.TIRES, BigDecimal.valueOf(40)),
+                new VehicleEventTypeAmountProjection(VehicleEventType.OIL_CHANGE, BigDecimal.valueOf(30)),
+                new VehicleEventTypeAmountProjection(VehicleEventType.OTHER, BigDecimal.valueOf(20))
+        ));
+        // FUEL (refuels) = 100 -> top5: FUEL 100, MAINTENANCE 90, TAX 80, INSURANCE 70, DOCUMENTS 60
+        // overflow (OTHER) = CAR_WASH 50 + TIRES 40 + OIL_CHANGE 30 + OTHER nativo 20 = 140
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getSpendingBreakdown()).hasSize(6);
+        assertThat(body.getSpendingBreakdown())
+                .extracting(SpendingCategoryDTO::category)
+                .containsExactly("FUEL", "MAINTENANCE", "TAX", "INSURANCE", "DOCUMENTS", "OTHER");
+        assertThat(body.getSpendingBreakdown().get(0).amount()).isEqualByComparingTo(BigDecimal.valueOf(100));
+        assertThat(body.getSpendingBreakdown().get(5).category()).isEqualTo("OTHER");
+        assertThat(body.getSpendingBreakdown().get(5).amount()).isEqualByComparingTo(BigDecimal.valueOf(140));
     }
 
     @Test

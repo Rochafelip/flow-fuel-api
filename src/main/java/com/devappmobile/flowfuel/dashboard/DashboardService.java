@@ -10,13 +10,19 @@ import com.devappmobile.flowfuel.vehicle.EnergyType;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventType;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventTypeAmountProjection;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -27,6 +33,8 @@ public class DashboardService {
     private final VehicleRepository vehicleRepository;
     private final VehicleEventRepository vehicleEventRepository;
     private final AuthorizationHelper authorizationHelper;
+
+    private static final int TOP_SPENDING_CATEGORIES = 5;
 
     public DashboardDTO getVehicleDashboard(User user, Long vehicleId) {
         Vehicle vehicle = vehicleRepository.findById(vehicleId)
@@ -48,6 +56,8 @@ public class DashboardService {
                 .orElse(BigDecimal.ZERO);
         BigDecimal totalOverallSpent = totalSpent.add(totalEventsAmount);
 
+        List<SpendingCategoryDTO> spendingBreakdown = buildSpendingBreakdown(totalSpent, vehicleId);
+
         Optional<Refuel> lastRefuelOpt =
                 refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(vehicleId);
 
@@ -68,6 +78,7 @@ public class DashboardService {
                 .totalRefuels(totalRefuels)
                 .totalSpent(totalSpent)
                 .totalOverallSpent(totalOverallSpent)
+                .spendingBreakdown(spendingBreakdown)
                 .costPerKm(costPerKm)
                 .lastRefuelDate(lastRefuelDate)
                 .lastOdometer(lastOdometer);
@@ -93,6 +104,52 @@ public class DashboardService {
         }
 
         return builder.build();
+    }
+
+    /**
+     * Composição de gastos por categoria para o gráfico de rosca: combustível
+     * (abastecimentos + eventos do tipo FUEL, somados na mesma fatia) mais as
+     * demais categorias de vehicle_events. Mantém as {@value #TOP_SPENDING_CATEGORIES}
+     * maiores como fatias próprias (ordenadas por valor desc) e agrupa o restante
+     * — incluindo a categoria nativa OTHER — numa fatia final "OTHER".
+     */
+    private List<SpendingCategoryDTO> buildSpendingBreakdown(BigDecimal refuelsTotalSpent, Long vehicleId) {
+        Map<VehicleEventType, BigDecimal> eventsByType = new EnumMap<>(VehicleEventType.class);
+        for (VehicleEventTypeAmountProjection projection
+                : vehicleEventRepository.getTotalAmountByVehicleIdGroupedByType(vehicleId)) {
+            eventsByType.put(projection.type(), projection.totalAmount());
+        }
+
+        BigDecimal fuelAmount = refuelsTotalSpent
+                .add(eventsByType.getOrDefault(VehicleEventType.FUEL, BigDecimal.ZERO));
+
+        List<SpendingCategoryDTO> rankable = new ArrayList<>();
+        if (fuelAmount.signum() > 0) {
+            rankable.add(new SpendingCategoryDTO(VehicleEventType.FUEL.name(), fuelAmount));
+        }
+        for (Map.Entry<VehicleEventType, BigDecimal> entry : eventsByType.entrySet()) {
+            VehicleEventType type = entry.getKey();
+            if (type == VehicleEventType.FUEL || type == VehicleEventType.OTHER) {
+                continue;
+            }
+            if (entry.getValue().signum() > 0) {
+                rankable.add(new SpendingCategoryDTO(type.name(), entry.getValue()));
+            }
+        }
+        rankable.sort(Comparator.comparing(SpendingCategoryDTO::amount).reversed());
+
+        int topCount = Math.min(TOP_SPENDING_CATEGORIES, rankable.size());
+        List<SpendingCategoryDTO> result = new ArrayList<>(rankable.subList(0, topCount));
+
+        BigDecimal overflow = eventsByType.getOrDefault(VehicleEventType.OTHER, BigDecimal.ZERO);
+        for (int i = topCount; i < rankable.size(); i++) {
+            overflow = overflow.add(rankable.get(i).amount());
+        }
+        if (overflow.signum() > 0) {
+            result.add(new SpendingCategoryDTO(VehicleEventType.OTHER.name(), overflow));
+        }
+
+        return result;
     }
 
     private HybridBreakdownDTO buildHybridBreakdown(Long vehicleId) {

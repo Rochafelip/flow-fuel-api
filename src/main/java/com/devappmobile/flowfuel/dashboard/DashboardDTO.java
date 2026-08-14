@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 @Builder
@@ -30,6 +31,10 @@ public class DashboardDTO {
     @Schema(description = "Soma de `totalSpent` (combustível) com todos os `vehicle_events` do veículo "
             + "(impostos, documentos, manutenção etc.). Gasto total real do veículo.")
     private BigDecimal totalOverallSpent;
+
+    @Schema(description = "Composição de gastos por categoria (top 5 + 'OTHER' agregando o resto), "
+            + "histórico completo, usada no gráfico de rosca. Vazio se não houver nenhum gasto.")
+    private List<SpendingCategoryDTO> spendingBreakdown;
 
     @Schema(description = "Custo médio por km rodado (R$/km), considerando todos os abastecimentos "
             + "(cheios ou parciais). Sempre presente, inclusive em HYBRID (combina combustível e elétrico).",

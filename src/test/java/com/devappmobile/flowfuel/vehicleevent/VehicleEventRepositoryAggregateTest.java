@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,9 +43,13 @@ class VehicleEventRepositoryAggregateTest {
     }
 
     private void saveEvent(BigDecimal amount) {
+        saveEvent(VehicleEventType.TAX, amount);
+    }
+
+    private void saveEvent(VehicleEventType type, BigDecimal amount) {
         VehicleEvent event = new VehicleEvent();
         event.setVehicle(vehicle);
-        event.setType(VehicleEventType.TAX);
+        event.setType(type);
         event.setAmount(amount);
         event.setEventDate(LocalDate.of(2026, 1, 10));
         vehicleEventRepository.save(event);
@@ -64,5 +69,33 @@ class VehicleEventRepositoryAggregateTest {
         BigDecimal total = vehicleEventRepository.getTotalAmountByVehicleId(vehicle.getId())
                 .orElseThrow();
         assertThat(total).isEqualByComparingTo(BigDecimal.valueOf(443.30));
+    }
+
+    @Test
+    void getTotalAmountByVehicleIdGroupedByType_semEventos_retornaListaVazia() {
+        assertThat(vehicleEventRepository.getTotalAmountByVehicleIdGroupedByType(vehicle.getId()))
+                .isEmpty();
+    }
+
+    @Test
+    void getTotalAmountByVehicleIdGroupedByType_comVariosTipos_somaPorTipo() {
+        saveEvent(VehicleEventType.TAX, BigDecimal.valueOf(92.60));
+        saveEvent(VehicleEventType.TAX, BigDecimal.valueOf(92.60));
+        saveEvent(VehicleEventType.MAINTENANCE, BigDecimal.valueOf(140.00));
+
+        List<VehicleEventTypeAmountProjection> result =
+                vehicleEventRepository.getTotalAmountByVehicleIdGroupedByType(vehicle.getId());
+
+        assertThat(result).hasSize(2);
+        assertThat(result)
+                .filteredOn(p -> p.type() == VehicleEventType.TAX)
+                .extracting(VehicleEventTypeAmountProjection::totalAmount)
+                .first()
+                .satisfies(amount -> assertThat((BigDecimal) amount).isEqualByComparingTo(BigDecimal.valueOf(185.20)));
+        assertThat(result)
+                .filteredOn(p -> p.type() == VehicleEventType.MAINTENANCE)
+                .extracting(VehicleEventTypeAmountProjection::totalAmount)
+                .first()
+                .satisfies(amount -> assertThat((BigDecimal) amount).isEqualByComparingTo(BigDecimal.valueOf(140.00)));
     }
 }
