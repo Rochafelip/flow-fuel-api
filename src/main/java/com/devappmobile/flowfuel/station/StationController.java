@@ -1,11 +1,14 @@
 package com.devappmobile.flowfuel.station;
 
+import com.devappmobile.flowfuel.station.dto.GeocodeResultDTO;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import com.devappmobile.flowfuel.user.User;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -31,5 +34,12 @@ public class StationController {
             @RequestParam @NotNull @DecimalMin("-180") @DecimalMax("180") Double lng,
             @RequestParam(defaultValue = "5000") @Positive Integer radius) {
         return stationService.findNearby(user.getId(), lat, lng, radius);
+    }
+
+    @GetMapping("/geocode")
+    public List<GeocodeResultDTO> geocode(
+            @AuthenticationPrincipal User user,
+            @RequestParam @NotBlank @Size(min = 3, max = 100) String query) {
+        return stationService.geocode(user.getId(), query);
     }
 }

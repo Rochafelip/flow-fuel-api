@@ -1,5 +1,6 @@
 package com.devappmobile.flowfuel.station;
 
+import com.devappmobile.flowfuel.station.dto.GeocodeResultDTO;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import com.devappmobile.flowfuel.user.UserRepository;
 import com.devappmobile.flowfuel.user.UserStatus;
@@ -94,5 +95,37 @@ class StationControllerIntegrationTest {
                 .andExpect(jsonPath("$[0].type").value("FUEL"))
                 .andExpect(jsonPath("$[0].distanceMeters").value(420))
                 .andExpect(jsonPath("$[0].rating").doesNotExist());
+    }
+
+    @Test
+    void geocode_semToken_retorna401() throws Exception {
+        mockMvc.perform(get("/api/v1/stations/geocode").param("query", "Boa Viagem"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void geocode_queryCurtaDemais_retorna400() throws Exception {
+        String token = obterToken("station-geo1@test.com");
+        mockMvc.perform(get("/api/v1/stations/geocode")
+                        .header("Authorization", "Bearer " + token)
+                        .param("query", "ab"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void geocode_requisicaoValida_retorna200ComResultadosDoService() throws Exception {
+        String token = obterToken("station-geo2@test.com");
+        when(stationService.geocode(anyLong(), anyString()))
+                .thenReturn(List.of(GeocodeResultDTO.builder()
+                        .displayName("Boa Viagem, Recife, Pernambuco, Brasil")
+                        .latitude(-8.12).longitude(-34.90).build()));
+
+        mockMvc.perform(get("/api/v1/stations/geocode")
+                        .header("Authorization", "Bearer " + token)
+                        .param("query", "Boa Viagem, Recife"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].displayName").value("Boa Viagem, Recife, Pernambuco, Brasil"))
+                .andExpect(jsonPath("$[0].latitude").value(-8.12))
+                .andExpect(jsonPath("$[0].longitude").value(-34.90));
     }
 }
