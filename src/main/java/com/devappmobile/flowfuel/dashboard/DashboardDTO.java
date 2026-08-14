@@ -27,6 +27,10 @@ public class DashboardDTO {
     @Schema(description = "Soma total gasta em todos os abastecimentos (sempre presente, inclusive em HYBRID).")
     private BigDecimal totalSpent;
 
+    @Schema(description = "Soma de `totalSpent` (combustível) com todos os `vehicle_events` do veículo "
+            + "(impostos, documentos, manutenção etc.). Gasto total real do veículo.")
+    private BigDecimal totalOverallSpent;
+
     @Schema(description = "Custo médio por km rodado (R$/km), considerando todos os abastecimentos "
             + "(cheios ou parciais). Sempre presente, inclusive em HYBRID (combina combustível e elétrico).",
             example = "0.42")

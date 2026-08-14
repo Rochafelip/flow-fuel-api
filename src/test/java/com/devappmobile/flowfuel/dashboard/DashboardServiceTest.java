@@ -10,6 +10,7 @@ import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.EnergyType;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,7 @@ class DashboardServiceTest {
 
     @Mock private RefuelRepository refuelRepository;
     @Mock private VehicleRepository vehicleRepository;
+    @Mock private VehicleEventRepository vehicleEventRepository;
     @Mock private AuthorizationHelper authorizationHelper;
 
     @InjectMocks private DashboardService dashboardService;
@@ -362,6 +364,38 @@ class DashboardServiceTest {
 
         // 500 km percorridos, R$40 gastos no trecho mais recente -> 40/500 = 0,08
         assertThat(body.getCostPerKm()).isEqualByComparingTo(BigDecimal.valueOf(0.08));
+    }
+
+    @Test
+    void getVehicleDashboard_semEventos_totalOverallSpentIgualAoTotalSpent() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(1L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(148.42)));
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(21.29)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(6.97)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getTotalOverallSpent()).isEqualByComparingTo(BigDecimal.valueOf(148.42));
+    }
+
+    @Test
+    void getVehicleDashboard_comAbastecimentosEEventos_totalOverallSpentSomaOsDois() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(1L);
+        when(refuelRepository.getTotalSpentByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(148.42)));
+        when(refuelRepository.getTotalEnergyByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(21.29)));
+        when(refuelRepository.getAveragePricePerUnitByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(6.97)));
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+        when(vehicleEventRepository.getTotalAmountByVehicleId(10L)).thenReturn(Optional.of(BigDecimal.valueOf(1572.23)));
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        // 148,42 (combustível) + 1572,23 (eventos: impostos, docs, outros) = 1720,65
+        assertThat(body.getTotalOverallSpent()).isEqualByComparingTo(BigDecimal.valueOf(1720.65));
     }
 
     @Test

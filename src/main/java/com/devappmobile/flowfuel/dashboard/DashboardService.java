@@ -9,6 +9,7 @@ import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.EnergyType;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
 import com.devappmobile.flowfuel.vehicle.VehicleRepository;
+import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +25,7 @@ public class DashboardService {
 
     private final RefuelRepository refuelRepository;
     private final VehicleRepository vehicleRepository;
+    private final VehicleEventRepository vehicleEventRepository;
     private final AuthorizationHelper authorizationHelper;
 
     public DashboardDTO getVehicleDashboard(User user, Long vehicleId) {
@@ -40,6 +42,11 @@ public class DashboardService {
         BigDecimal totalSpent = refuelRepository
                 .getTotalSpentByVehicleId(vehicleId)
                 .orElse(BigDecimal.ZERO);
+
+        BigDecimal totalEventsAmount = vehicleEventRepository
+                .getTotalAmountByVehicleId(vehicleId)
+                .orElse(BigDecimal.ZERO);
+        BigDecimal totalOverallSpent = totalSpent.add(totalEventsAmount);
 
         Optional<Refuel> lastRefuelOpt =
                 refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(vehicleId);
@@ -60,6 +67,7 @@ public class DashboardService {
                 .energyType(vehicle.getEnergyType())
                 .totalRefuels(totalRefuels)
                 .totalSpent(totalSpent)
+                .totalOverallSpent(totalOverallSpent)
                 .costPerKm(costPerKm)
                 .lastRefuelDate(lastRefuelDate)
                 .lastOdometer(lastOdometer);
