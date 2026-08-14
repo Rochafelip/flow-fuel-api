@@ -2,8 +2,10 @@ package com.devappmobile.flowfuel.station;
 
 import com.devappmobile.flowfuel.exception.ExternalServiceUnavailableException;
 import com.devappmobile.flowfuel.exception.RateLimitExceededException;
+import com.devappmobile.flowfuel.station.client.NominatimClient;
 import com.devappmobile.flowfuel.station.client.OpenChargeMapClient;
 import com.devappmobile.flowfuel.station.client.OverpassClient;
+import com.devappmobile.flowfuel.station.dto.GeocodeResultDTO;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.BucketConfiguration;
@@ -37,17 +39,26 @@ public class StationService {
             .addLimit(Bandwidth.builder().capacity(10).refillGreedy(10, Duration.ofMinutes(1)).build())
             .build();
 
+    private static final BucketConfiguration NOMINATIM_GLOBAL_RATE_LIMIT = BucketConfiguration.builder()
+            .addLimit(Bandwidth.builder().capacity(1).refillGreedy(1, Duration.ofSeconds(1)).build())
+            .build();
+
     private final OverpassClient overpassClient;
     private final OpenChargeMapClient openChargeMapClient;
     private final StationCacheService cacheService;
     private final ObjectProvider<ProxyManager<String>> proxyManagerProvider;
+    private final NominatimClient nominatimClient;
+    private final GeocodeCacheService geocodeCacheService;
 
     public StationService(OverpassClient overpassClient, OpenChargeMapClient openChargeMapClient,
-            StationCacheService cacheService, ObjectProvider<ProxyManager<String>> proxyManagerProvider) {
+            StationCacheService cacheService, ObjectProvider<ProxyManager<String>> proxyManagerProvider,
+            NominatimClient nominatimClient, GeocodeCacheService geocodeCacheService) {
         this.overpassClient = overpassClient;
         this.openChargeMapClient = openChargeMapClient;
         this.cacheService = cacheService;
         this.proxyManagerProvider = proxyManagerProvider;
+        this.nominatimClient = nominatimClient;
+        this.geocodeCacheService = geocodeCacheService;
     }
 
     public List<StationResponseDTO> findNearby(Long userId, double lat, double lng, int radiusMeters) {
@@ -92,6 +103,41 @@ public class StationService {
 
         cacheService.put(cacheKey, merged);
         return merged;
+    }
+
+    public List<GeocodeResultDTO> geocode(Long userId, String query) {
+        checkRateLimit(userId);
+        checkGeocodeGlobalRateLimit();
+
+        String cacheKey = "stations:geocode:" + query.trim().toLowerCase(Locale.forLanguageTag("pt-BR"));
+        Optional<List<GeocodeResultDTO>> cached = geocodeCacheService.get(cacheKey);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+
+        List<GeocodeResultDTO> results = nominatimClient.search(query.trim());
+        geocodeCacheService.put(cacheKey, results);
+        return results;
+    }
+
+    private void checkGeocodeGlobalRateLimit() {
+        ProxyManager<String> proxyManager = proxyManagerProvider.getIfAvailable();
+        if (proxyManager == null) {
+            return;
+        }
+        ConsumptionProbe probe;
+        try {
+            BucketProxy bucket = proxyManager.builder().build("nominatim-global-rate-limit", () -> NOMINATIM_GLOBAL_RATE_LIMIT);
+            probe = bucket.tryConsumeAndReturnRemaining(1);
+        } catch (Exception e) {
+            log.warn("Rate limit global do Nominatim indisponivel, fail-open. error={}", e.getMessage());
+            return;
+        }
+        if (!probe.isConsumed()) {
+            long retryAfterSeconds = Math.max(1L,
+                    Math.ceilDiv(probe.getNanosToWaitForRefill(), 1_000_000_000L));
+            throw new RateLimitExceededException(retryAfterSeconds);
+        }
     }
 
     private void checkRateLimit(Long userId) {
