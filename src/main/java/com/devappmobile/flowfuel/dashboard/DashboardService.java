@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -35,6 +36,7 @@ public class DashboardService {
     private final AuthorizationHelper authorizationHelper;
 
     private static final int TOP_SPENDING_CATEGORIES = 5;
+    private static final int MONTHLY_SPENDING_MONTHS = 6;
 
     public DashboardDTO getVehicleDashboard(User user, Long vehicleId) {
         Vehicle vehicle = vehicleRepository.findById(vehicleId)
@@ -57,6 +59,7 @@ public class DashboardService {
         BigDecimal totalOverallSpent = totalSpent.add(totalEventsAmount);
 
         List<SpendingCategoryDTO> spendingBreakdown = buildSpendingBreakdown(totalSpent, vehicleId);
+        List<MonthlySpendingDTO> monthlySpending = buildMonthlySpending(vehicleId);
 
         Optional<Refuel> lastRefuelOpt =
                 refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(vehicleId);
@@ -79,6 +82,7 @@ public class DashboardService {
                 .totalSpent(totalSpent)
                 .totalOverallSpent(totalOverallSpent)
                 .spendingBreakdown(spendingBreakdown)
+                .monthlySpending(monthlySpending)
                 .costPerKm(costPerKm)
                 .lastRefuelDate(lastRefuelDate)
                 .lastOdometer(lastOdometer);
@@ -147,6 +151,32 @@ public class DashboardService {
         }
         if (overflow.signum() > 0) {
             result.add(new SpendingCategoryDTO(VehicleEventType.OTHER.name(), overflow));
+        }
+
+        return result;
+    }
+
+    /**
+     * Gasto total (combustível + eventos) dos últimos {@value #MONTHLY_SPENDING_MONTHS}
+     * meses corridos, incluindo o mês atual, do mais antigo para o mais recente.
+     * Meses sem nenhum gasto entram com {@code BigDecimal.ZERO} — a série sempre
+     * tem exatamente {@value #MONTHLY_SPENDING_MONTHS} pontos, sem buracos.
+     */
+    private List<MonthlySpendingDTO> buildMonthlySpending(Long vehicleId) {
+        List<MonthlySpendingDTO> result = new ArrayList<>();
+        YearMonth currentMonth = YearMonth.now();
+
+        for (int i = MONTHLY_SPENDING_MONTHS - 1; i >= 0; i--) {
+            YearMonth yearMonth = currentMonth.minusMonths(i);
+
+            BigDecimal refuelsAmount = refuelRepository
+                    .getMonthlySpent(vehicleId, yearMonth.getMonthValue(), yearMonth.getYear())
+                    .orElse(BigDecimal.ZERO);
+            BigDecimal eventsAmount = vehicleEventRepository
+                    .getMonthlySpent(vehicleId, yearMonth.getMonthValue(), yearMonth.getYear())
+                    .orElse(BigDecimal.ZERO);
+
+            result.add(new MonthlySpendingDTO(yearMonth.toString(), refuelsAmount.add(eventsAmount)));
         }
 
         return result;

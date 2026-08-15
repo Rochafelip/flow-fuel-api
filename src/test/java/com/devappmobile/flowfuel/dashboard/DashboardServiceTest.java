@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
@@ -114,6 +115,40 @@ class DashboardServiceTest {
         assertThat(body.getEnergyUnit()).isEqualTo("litros");
         assertThat(body.getPriceUnit()).isEqualTo("R$/litro");
         assertThat(body.getConsumptionUnit()).isEqualTo("km/L");
+    }
+
+    @Test
+    void getVehicleDashboard_retornaGastosMensaisDosUltimos6Meses() {
+        when(vehicleRepository.findById(10L)).thenReturn(Optional.of(vehicle));
+        when(refuelRepository.countByVehicleId(10L)).thenReturn(0L);
+        when(refuelRepository.findTopByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(Optional.empty());
+        when(refuelRepository.findFullTankRefuelsByVehicleId(10L)).thenReturn(List.of());
+
+        YearMonth currentMonth = YearMonth.now();
+        YearMonth previousMonth = currentMonth.minusMonths(1);
+
+        for (int i = 5; i >= 0; i--) {
+            YearMonth month = currentMonth.minusMonths(i);
+            when(refuelRepository.getMonthlySpent(10L, month.getMonthValue(), month.getYear()))
+                    .thenReturn(Optional.empty());
+            when(vehicleEventRepository.getMonthlySpent(10L, month.getMonthValue(), month.getYear()))
+                    .thenReturn(Optional.empty());
+        }
+
+        when(refuelRepository.getMonthlySpent(10L, currentMonth.getMonthValue(), currentMonth.getYear()))
+                .thenReturn(Optional.of(BigDecimal.valueOf(303.30)));
+
+        when(vehicleEventRepository.getMonthlySpent(10L, previousMonth.getMonthValue(), previousMonth.getYear()))
+                .thenReturn(Optional.of(BigDecimal.valueOf(150.00)));
+
+        DashboardDTO body = dashboardService.getVehicleDashboard(owner, 10L);
+
+        assertThat(body.getMonthlySpending()).hasSize(6);
+        assertThat(body.getMonthlySpending().get(5).month()).isEqualTo(currentMonth.toString());
+        assertThat(body.getMonthlySpending().get(5).amount()).isEqualByComparingTo(BigDecimal.valueOf(303.30));
+        assertThat(body.getMonthlySpending().get(4).month()).isEqualTo(previousMonth.toString());
+        assertThat(body.getMonthlySpending().get(4).amount()).isEqualByComparingTo(BigDecimal.valueOf(150.00));
+        assertThat(body.getMonthlySpending().get(0).amount()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
