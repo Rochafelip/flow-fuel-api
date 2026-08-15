@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.net.URI;
 import java.util.List;
 
 @Service
@@ -124,15 +123,15 @@ public class VehicleService {
         return new PhotoUploadResponse("/vehicles/" + id + "/photo");
     }
 
-    public ResponseEntity<Void> getPhoto(User user, Long id) {
+    public ResponseEntity<byte[]> getPhoto(User user, Long id) {
         Vehicle vehicle = findOwned(user, id);
         String key = vehicle.getPhoto();
         if (key == null) {
             return ResponseEntity.noContent().build();
         }
 
-        String url = storageService.publicUrl(key);
-        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(url)).build();
+        byte[] bytes = storageService.download(key);
+        return ResponseEntity.ok().contentType(org.springframework.http.MediaType.IMAGE_JPEG).body(bytes);
     }
 
     public void removePhoto(User user, Long id) {

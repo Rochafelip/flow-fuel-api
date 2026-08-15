@@ -87,7 +87,7 @@ public class VehicleController {
     }
 
     @GetMapping("/{id}/photo")
-    public ResponseEntity<Void> getPhoto(
+    public ResponseEntity<byte[]> getPhoto(
             @AuthenticationPrincipal User user,
             @PathVariable Long id) {
         return vehicleService.getPhoto(user, id);

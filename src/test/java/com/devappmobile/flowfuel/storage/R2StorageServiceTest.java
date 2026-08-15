@@ -7,9 +7,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import javax.imageio.ImageIO;
@@ -19,8 +22,10 @@ import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class R2StorageServiceTest {
@@ -81,8 +86,18 @@ class R2StorageServiceTest {
     }
 
     @Test
-    void publicUrl_concatenaBaseUrlEKey() {
-        assertThat(service.publicUrl("users/1/photo.png"))
-                .isEqualTo("https://pub-test.r2.dev/users/1/photo.png");
+    void download_buscaBytesDoObjetoNoBucketCorreto() {
+        byte[] expectedBytes = "conteudo-da-imagem".getBytes();
+        ResponseBytes<GetObjectResponse> responseBytes =
+                ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), expectedBytes);
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(responseBytes);
+
+        byte[] result = service.download("users/1/photo.png");
+
+        assertThat(result).isEqualTo(expectedBytes);
+        ArgumentCaptor<GetObjectRequest> captor = ArgumentCaptor.forClass(GetObjectRequest.class);
+        verify(s3Client).getObjectAsBytes(captor.capture());
+        assertThat(captor.getValue().bucket()).isEqualTo("test-bucket");
+        assertThat(captor.getValue().key()).isEqualTo("users/1/photo.png");
     }
 }

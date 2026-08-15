@@ -8,5 +8,5 @@ public interface StorageService {
 
     void delete(String key);
 
-    String publicUrl(String key);
+    byte[] download(String key);
 }

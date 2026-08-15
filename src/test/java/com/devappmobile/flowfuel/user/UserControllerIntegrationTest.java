@@ -806,14 +806,13 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void getProfilePicture_aposUpload_retorna302ComLocation() throws Exception {
+    void getProfilePicture_aposUpload_retornaBytesDaImagem() throws Exception {
         MvcResult registerResult = registrar("foto-perfil@test.com", "senha123");
         long userId = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("id").asLong();
         String token = obterToken("foto-perfil@test.com", "senha123");
 
         when(storageService.upload(any(), any())).thenReturn("profile_pictures/" + userId + "_foto.png");
-        when(storageService.publicUrl(any()))
-                .thenAnswer(inv -> "https://pub-test.r2.dev/" + inv.getArgument(0, String.class));
+        when(storageService.download(any())).thenReturn(new byte[]{1, 2, 3});
 
         mockMvc.perform(multipart("/api/v1/auth/{id}/upload-profile-picture", userId)
                 .file(new org.springframework.mock.web.MockMultipartFile(
@@ -823,9 +822,9 @@ class UserControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/{id}/profile-picture", userId)
                 .header("Authorization", "Bearer " + token))
-                .andExpect(status().isFound())
-                .andExpect(header().string("Location",
-                        org.hamcrest.Matchers.startsWith("https://pub-test.r2.dev/profile_pictures/")));
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+                .andExpect(content().bytes(new byte[]{1, 2, 3}));
     }
 
     @Test

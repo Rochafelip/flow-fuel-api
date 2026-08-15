@@ -175,27 +175,27 @@ class UserProfileServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
-    // --- getProfilePictureUrl ---
+    // --- getProfilePicture ---
 
     @Test
-    void getProfilePictureUrl_comFoto_retornaUrlPublica() {
+    void getProfilePicture_comFoto_retornaBytesDoR2() {
         existingUser.setProfilePicture("profile_pictures/1_foto.jpg");
         when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-        when(storageService.publicUrl("profile_pictures/1_foto.jpg"))
-                .thenReturn("https://pub-test.r2.dev/profile_pictures/1_foto.jpg");
+        when(storageService.download("profile_pictures/1_foto.jpg"))
+                .thenReturn("bytes-da-foto".getBytes());
 
-        String url = userProfileService.getProfilePictureUrl(1L);
+        byte[] bytes = userProfileService.getProfilePicture(1L);
 
-        assertThat(url).isEqualTo("https://pub-test.r2.dev/profile_pictures/1_foto.jpg");
+        assertThat(bytes).isEqualTo("bytes-da-foto".getBytes());
     }
 
     @Test
-    void getProfilePictureUrl_semFoto_retornaNull() {
+    void getProfilePicture_semFoto_retornaNull() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
 
-        String url = userProfileService.getProfilePictureUrl(1L);
+        byte[] bytes = userProfileService.getProfilePicture(1L);
 
-        assertThat(url).isNull();
-        verify(storageService, never()).publicUrl(any());
+        assertThat(bytes).isNull();
+        verify(storageService, never()).download(any());
     }
 }

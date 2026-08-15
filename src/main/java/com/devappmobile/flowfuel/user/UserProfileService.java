@@ -31,9 +31,9 @@ public class UserProfileService {
         return dto;
     }
 
-    public String getProfilePictureUrl(Long userId) {
+    public byte[] getProfilePicture(Long userId) {
         String key = findUserOrThrow(userId).getProfilePicture();
-        return key != null ? storageService.publicUrl(key) : null;
+        return key != null ? storageService.download(key) : null;
     }
 
     public void removeProfilePicture(Long userId) {

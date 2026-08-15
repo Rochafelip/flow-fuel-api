@@ -95,12 +95,12 @@ public class UserController {
     }
 
     @GetMapping("/{userId}/profile-picture")
-    public ResponseEntity<Void> getProfilePicture(@PathVariable Long userId,
+    public ResponseEntity<byte[]> getProfilePicture(@PathVariable Long userId,
             @AuthenticationPrincipal User authUser) {
         ensureSelf(authUser, userId);
-        String url = userProfileService.getProfilePictureUrl(userId);
-        if (url == null) return ResponseEntity.noContent().build();
-        return ResponseEntity.status(HttpStatus.FOUND).location(java.net.URI.create(url)).build();
+        byte[] bytes = userProfileService.getProfilePicture(userId);
+        if (bytes == null) return ResponseEntity.noContent().build();
+        return ResponseEntity.ok().contentType(org.springframework.http.MediaType.IMAGE_JPEG).body(bytes);
     }
 
     @DeleteMapping("/{userId}/profile-picture")
