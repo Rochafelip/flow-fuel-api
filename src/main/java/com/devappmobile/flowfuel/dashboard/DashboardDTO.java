@@ -36,6 +36,11 @@ public class DashboardDTO {
             + "histórico completo, usada no gráfico de rosca. Vazio se não houver nenhum gasto.")
     private List<SpendingCategoryDTO> spendingBreakdown;
 
+    @Schema(description = "Gasto total (combustível + eventos) dos últimos 6 meses corridos, "
+            + "incluindo o mês atual, usado no gráfico de gastos mensais. Sempre 6 entradas, "
+            + "ordenadas do mês mais antigo para o mais recente; meses sem gasto vêm com amount 0.")
+    private List<MonthlySpendingDTO> monthlySpending;
+
     @Schema(description = "Custo médio por km rodado (R$/km), considerando todos os abastecimentos "
             + "(cheios ou parciais). Sempre presente, inclusive em HYBRID (combina combustível e elétrico).",
             example = "0.42")
