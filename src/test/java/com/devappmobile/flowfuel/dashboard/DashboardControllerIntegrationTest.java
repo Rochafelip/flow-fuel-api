@@ -104,6 +104,21 @@ class DashboardControllerIntegrationTest {
     }
 
     @Test
+    void getDashboard_retornaGastosMensaisComSeisEntradas() throws Exception {
+        String token = obterToken("monthly@test.com");
+        long vehicleId = criarVeiculo(token);
+        criarAbastecimento(token, vehicleId, 50500);
+
+        mockMvc.perform(get("/api/v1/dashboard/vehicle/{id}", vehicleId)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.monthlySpending.length()").value(6))
+                .andExpect(jsonPath("$.monthlySpending[5].amount").isNumber())
+                .andExpect(jsonPath("$.monthlySpending[5].amount").value(org.hamcrest.Matchers.greaterThan(0.0)))
+                .andExpect(jsonPath("$.monthlySpending[0].month").isString());
+    }
+
+    @Test
     void getDashboard_veiculoDeOutroUsuario_retorna403() throws Exception {
         String tokenA = obterToken("dashA@test.com");
         String tokenB = obterToken("dashB@test.com");
