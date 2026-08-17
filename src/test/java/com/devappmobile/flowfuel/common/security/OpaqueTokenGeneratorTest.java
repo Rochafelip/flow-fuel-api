@@ -50,4 +50,33 @@ class OpaqueTokenGeneratorTest {
         String hash = OpaqueTokenGenerator.sha256("qualquer");
         assertThat(hash).hasSize(64).matches("[0-9a-f]+");
     }
+
+    @Test
+    void generateNumericCode_retorna6Digitos() {
+        for (int i = 0; i < 200; i++) {
+            assertThat(OpaqueTokenGenerator.generateNumericCode()).matches("\\d{6}");
+        }
+    }
+
+    @Test
+    void generateNumericCode_preservaZerosAEsquerda() {
+        // Sobre muitas amostras, algum valor < 10000 deve aparecer e manter 5 chars.
+        boolean sawLeadingZero = false;
+        for (int i = 0; i < 2000 && !sawLeadingZero; i++) {
+            String code = OpaqueTokenGenerator.generateNumericCode();
+            if (code.charAt(0) == '0') {
+                sawLeadingZero = true;
+            }
+        }
+        assertThat(sawLeadingZero).isTrue();
+    }
+
+    @Test
+    void generateNumericCode_producesDifferentValuesAcrossCalls() {
+        java.util.Set<String> codes = new java.util.HashSet<>();
+        for (int i = 0; i < 50; i++) {
+            codes.add(OpaqueTokenGenerator.generateNumericCode());
+        }
+        assertThat(codes.size()).isGreaterThan(1);
+    }
 }

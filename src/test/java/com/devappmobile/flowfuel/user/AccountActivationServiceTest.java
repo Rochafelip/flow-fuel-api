@@ -18,6 +18,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,17 +42,18 @@ class AccountActivationServiceTest {
     }
 
     @Test
-    void activate_comTokenValido_ativaContaERetornaTokenPair() {
-        String plaintext = "plain-token";
+    void activate_comCodigoValido_ativaContaERetornaTokenPair() {
+        String plaintext = "12345";
         ActivationToken token = new ActivationToken(pendingUser,
                 OpaqueTokenGenerator.sha256(plaintext), LocalDateTime.now().plusMinutes(30));
         TokenPairResponse expected = new TokenPairResponse("access", "refresh", 900L);
 
-        when(tokenRepository.findByTokenHash(OpaqueTokenGenerator.sha256(plaintext)))
+        when(userRepository.findByEmail(pendingUser.getEmail())).thenReturn(Optional.of(pendingUser));
+        when(tokenRepository.findByUserIdAndTokenHash(pendingUser.getId(), OpaqueTokenGenerator.sha256(plaintext)))
                 .thenReturn(Optional.of(token));
         when(tokenIssuer.issueTokenPair(pendingUser)).thenReturn(expected);
 
-        TokenPairResponse response = accountActivationService.activate(plaintext);
+        TokenPairResponse response = accountActivationService.activate(pendingUser.getEmail(), plaintext);
 
         assertThat(response).isEqualTo(expected);
         assertThat(pendingUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
@@ -61,10 +63,10 @@ class AccountActivationServiceTest {
     }
 
     @Test
-    void activate_comTokenInexistente_lancaAuthActivationInvalid() {
-        when(tokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+    void activate_comEmailInexistente_lancaAuthActivationInvalid() {
+        when(userRepository.findByEmail(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> accountActivationService.activate("token-inexistente"))
+        assertThatThrownBy(() -> accountActivationService.activate("ninguem@example.com", "12345"))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
@@ -72,16 +74,29 @@ class AccountActivationServiceTest {
     }
 
     @Test
-    void activate_comTokenJaUsado_lancaAuthActivationInvalid() {
-        String plaintext = "usado-token";
+    void activate_comCodigoInexistente_lancaAuthActivationInvalid() {
+        when(userRepository.findByEmail(pendingUser.getEmail())).thenReturn(Optional.of(pendingUser));
+        when(tokenRepository.findByUserIdAndTokenHash(eq(pendingUser.getId()), any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accountActivationService.activate(pendingUser.getEmail(), "00000"))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
+        verifyNoInteractions(tokenIssuer, auditLogService);
+    }
+
+    @Test
+    void activate_comCodigoJaUsado_lancaAuthActivationInvalid() {
+        String plaintext = "54321";
         ActivationToken token = new ActivationToken(pendingUser,
                 OpaqueTokenGenerator.sha256(plaintext), LocalDateTime.now().plusMinutes(30));
         token.setUsedAt(LocalDateTime.now().minusMinutes(1));
 
-        when(tokenRepository.findByTokenHash(OpaqueTokenGenerator.sha256(plaintext)))
+        when(userRepository.findByEmail(pendingUser.getEmail())).thenReturn(Optional.of(pendingUser));
+        when(tokenRepository.findByUserIdAndTokenHash(pendingUser.getId(), OpaqueTokenGenerator.sha256(plaintext)))
                 .thenReturn(Optional.of(token));
 
-        assertThatThrownBy(() -> accountActivationService.activate(plaintext))
+        assertThatThrownBy(() -> accountActivationService.activate(pendingUser.getEmail(), plaintext))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
@@ -89,15 +104,16 @@ class AccountActivationServiceTest {
     }
 
     @Test
-    void activate_comTokenExpirado_lancaAuthActivationInvalid() {
-        String plaintext = "expirado-token";
+    void activate_comCodigoExpirado_lancaAuthActivationInvalid() {
+        String plaintext = "11111";
         ActivationToken token = new ActivationToken(pendingUser,
                 OpaqueTokenGenerator.sha256(plaintext), LocalDateTime.now().minusMinutes(1));
 
-        when(tokenRepository.findByTokenHash(OpaqueTokenGenerator.sha256(plaintext)))
+        when(userRepository.findByEmail(pendingUser.getEmail())).thenReturn(Optional.of(pendingUser));
+        when(tokenRepository.findByUserIdAndTokenHash(pendingUser.getId(), OpaqueTokenGenerator.sha256(plaintext)))
                 .thenReturn(Optional.of(token));
 
-        assertThatThrownBy(() -> accountActivationService.activate(plaintext))
+        assertThatThrownBy(() -> accountActivationService.activate(pendingUser.getEmail(), plaintext))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
@@ -105,8 +121,17 @@ class AccountActivationServiceTest {
     }
 
     @Test
-    void activate_comTokenAusente_lancaAuthActivationInvalid() {
-        assertThatThrownBy(() -> accountActivationService.activate(""))
+    void activate_comCodigoAusente_lancaAuthActivationInvalid() {
+        assertThatThrownBy(() -> accountActivationService.activate(pendingUser.getEmail(), ""))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
+        verifyNoInteractions(tokenRepository, tokenIssuer, auditLogService);
+    }
+
+    @Test
+    void activate_comEmailAusente_lancaAuthActivationInvalid() {
+        assertThatThrownBy(() -> accountActivationService.activate("", "12345"))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));

@@ -150,7 +150,7 @@ class AuditLogControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/activate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"token":"%s"}
+                        {"email":"ativar@test.com","token":"%s"}
                         """.formatted(activationToken)))
                 .andExpect(status().isOk());
 

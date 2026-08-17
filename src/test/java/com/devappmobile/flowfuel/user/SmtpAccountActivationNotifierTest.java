@@ -31,7 +31,6 @@ class SmtpAccountActivationNotifierTest {
     void setUp() {
         notifier = new SmtpAccountActivationNotifier(mailSender);
         ReflectionTestUtils.setField(notifier, "from", "no-reply@flowfuel.app");
-        ReflectionTestUtils.setField(notifier, "linkBaseUrl", "https://app.flowfuel.app/activate");
         ReflectionTestUtils.setField(notifier, "tokenTtlMinutes", 60L);
         when(mailSender.createMimeMessage())
                 .thenReturn(new MimeMessage(Session.getDefaultInstance(new Properties())));
@@ -72,47 +71,32 @@ class SmtpAccountActivationNotifierTest {
     }
 
     @Test
-    void sendActivationLink_incluiUrlComTokenEEmailNoHtml() throws Exception {
-        notifier.sendActivationLink(buildUser("fulano@example.com"), "abc123token");
+    void sendActivationCode_incluiCodigoNoHtml() throws Exception {
+        notifier.sendActivationCode(buildUser("fulano@example.com"), "12345");
 
         String html = findPartContent(captureSentMessage(), "text/html");
 
-        assertThat(html).contains(
-                "https://app.flowfuel.app/activate?token=abc123token&email=fulano%40example.com");
+        assertThat(html).contains("12345");
     }
 
     @Test
-    void sendActivationLink_incluiUrlComTokenEEmailNoPlainText() throws Exception {
-        notifier.sendActivationLink(buildUser("fulano@example.com"), "abc123token");
+    void sendActivationCode_incluiCodigoNoPlainText() throws Exception {
+        notifier.sendActivationCode(buildUser("fulano@example.com"), "12345");
 
         String plain = findPartContent(captureSentMessage(), "text/plain");
 
-        assertThat(plain).contains(
-                "https://app.flowfuel.app/activate?token=abc123token&email=fulano%40example.com");
+        assertThat(plain).contains("12345");
     }
 
     @Test
-    void sendActivationLink_naoExpoeMaisOCodigoBrutoForaDaUrl() throws Exception {
-        String token = "abc123token";
-
-        notifier.sendActivationLink(buildUser("fulano@example.com"), token);
+    void sendActivationCode_naoIncluiLinkOuUrl() throws Exception {
+        notifier.sendActivationCode(buildUser("fulano@example.com"), "12345");
 
         MimeMessage message = captureSentMessage();
         String html = findPartContent(message, "text/html");
         String plain = findPartContent(message, "text/plain");
 
-        String htmlWithoutUrl = html.replace("token=" + token, "");
-        String plainWithoutUrl = plain.replace("token=" + token, "");
-        assertThat(htmlWithoutUrl).doesNotContain(token);
-        assertThat(plainWithoutUrl).doesNotContain(token);
-    }
-
-    @Test
-    void sendActivationLink_codificaEmailComCaracteresEspeciais() throws Exception {
-        notifier.sendActivationLink(buildUser("fulano+teste@example.com"), "abc123token");
-
-        String html = findPartContent(captureSentMessage(), "text/html");
-
-        assertThat(html).contains("email=fulano%2Bteste%40example.com");
+        assertThat(html).doesNotContain("http://").doesNotContain("https://");
+        assertThat(plain).doesNotContain("http://").doesNotContain("https://");
     }
 }

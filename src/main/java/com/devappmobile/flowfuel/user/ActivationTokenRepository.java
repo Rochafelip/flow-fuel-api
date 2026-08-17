@@ -12,7 +12,12 @@ import java.util.Optional;
 @Repository
 public interface ActivationTokenRepository extends JpaRepository<ActivationToken, Long> {
 
-    Optional<ActivationToken> findByTokenHash(String tokenHash);
+    /**
+     * Busca escopada por usuario: token_hash NAO e globalmente unico para
+     * codigos de 6 digitos (colisoes entre usuarios sao esperadas), entao a
+     * busca precisa do par (user_id, token_hash) para ser inequivoca.
+     */
+    Optional<ActivationToken> findByUserIdAndTokenHash(Long userId, String tokenHash);
 
     /**
      * Invalida (marca como usados) todos os tokens ativos de um usuario.

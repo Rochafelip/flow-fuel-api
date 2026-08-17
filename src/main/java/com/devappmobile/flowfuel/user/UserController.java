@@ -34,7 +34,7 @@ public class UserController {
 
     @PostMapping("/activate")
     public ResponseEntity<TokenPairResponse> activate(@Valid @RequestBody ActivateAccountRequest request) {
-        TokenPairResponse tokens = accountActivationService.activate(request.token());
+        TokenPairResponse tokens = accountActivationService.activate(request.email(), request.token());
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + tokens.accessToken());

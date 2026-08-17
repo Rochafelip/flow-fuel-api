@@ -64,15 +64,14 @@ Com a aplicação em execução, o Swagger UI fica disponível em:
 
 ## Autenticação
 
-### Ativação de conta (magic link)
+### Ativação de conta (código de 6 dígitos)
 
 Usuários criados via `POST /api/v1/auth/register` nascem com status `PENDING_ACTIVATION` e **não conseguem logar** até ativar a conta:
 
-1. No registro, o backend gera um token opaco de ativação (hashado em SHA-256 no banco, TTL configurável via `flowfuel.account-activation.token-ttl-minutes`, default 60 min) e envia um link por email: `<ACCOUNT_ACTIVATION_LINK_BASE_URL>?token=...&email=<email>` (email incluído para suportar deep link no app mobile).
-2. `POST /api/v1/auth/activate` com `{"token": "..."}` valida o token, marca o usuário como `ACTIVE` e já devolve o par `accessToken`/`refreshToken` (auto-login — o usuário não precisa logar manualmente após ativar).
-3. `POST /api/v1/auth/resend-activation` com `{"email": "..."}` reenvia o link (não revela se o email existe ou já está ativo, para evitar enumeração de contas).
-4. Em produção/staging, um validador `@PostConstruct` impede a aplicação de subir se `ACCOUNT_ACTIVATION_LINK_BASE_URL` estiver vazio ou apontando para `localhost` — evita emails com link de ativação quebrado.
-5. Envio de email é uma estratégia plugável: com `MAIL_ENABLED=false` (default em dev) o link só é logado (stub); com `MAIL_ENABLED=true` é enviado por SMTP (SendGrid) em HTML, com o token também exibido em texto puro copiável.
+1. No registro, o backend sorteia um código numérico de 6 dígitos (hashado em SHA-256 no banco, TTL configurável via `flowfuel.account-activation.token-ttl-minutes`, default 60 min) e envia por email para o usuário digitar no app. A unicidade do hash é por `(user_id, token_hash)`, não global — colisões de código entre usuários diferentes são esperadas dado o espaço pequeno de valores.
+2. `POST /api/v1/auth/activate` com `{"email": "...", "token": "123456"}` valida o código (escopado ao usuário do email), marca o usuário como `ACTIVE` e já devolve o par `accessToken`/`refreshToken` (auto-login — o usuário não precisa logar manualmente após ativar). O endpoint é limitado a 5 tentativas/minuto por IP para dificultar força bruta (só 1.000.000 de combinações possíveis).
+3. `POST /api/v1/auth/resend-activation` com `{"email": "..."}` reenvia o código (não revela se o email existe ou já está ativo, para evitar enumeração de contas).
+4. Envio de email é uma estratégia plugável: com `MAIL_ENABLED=false` (default em dev) o código só é logado (stub); com `MAIL_ENABLED=true` é enviado por SMTP (SendGrid) em HTML, com o código em destaque.
 
 ### Login e par de tokens
 

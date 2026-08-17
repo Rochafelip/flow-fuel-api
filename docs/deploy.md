@@ -55,8 +55,7 @@ flyctl secrets set \
   MAIL_PORT=587 \
   MAIL_USERNAME=apikey \
   MAIL_PASSWORD="<api-key-do-sendgrid>" \
-  MAIL_FROM="flowfuelapp@gmail.com" \
-  ACCOUNT_ACTIVATION_LINK_BASE_URL="<url-do-frontend-em-producao>/activate"
+  MAIL_FROM="flowfuelapp@gmail.com"
 ```
 
 (`MAIL_USERNAME` no SendGrid é sempre a string literal `apikey`, não o seu usuário. `MAIL_FROM` precisa estar verificado em Settings → Sender Authentication no painel do SendGrid antes do envio funcionar.)
@@ -125,8 +124,8 @@ na Cloudflare — hoje as imagens são servidas pela URL pública padrão do R2 
 
 ## Pontos de atenção / pendências
 
-- **Rate limiting está em fail-open em produção** (sem Redis provisionado, ver passo 7) — os endpoints de auth (`/login`, `/register`, `/forgot-password`, `/resend-activation`) não têm proteção contra brute-force até que o Redis do passo 7 seja provisionado e `REDIS_URL` configurada.
-- **Envio de e-mail de ativação de conta**: configurar via os secrets `MAIL_*` do passo 5 (SendGrid). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o link de ativação só vai para o log da aplicação.
+- **Rate limiting está em fail-open em produção** (sem Redis provisionado, ver passo 7) — os endpoints de auth (`/login`, `/register`, `/forgot-password`, `/resend-activation`, `/activate`) não têm proteção contra brute-force até que o Redis do passo 7 seja provisionado e `REDIS_URL` configurada.
+- **Envio de e-mail de ativação de conta**: configurar via os secrets `MAIL_*` do passo 5 (SendGrid). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o código de ativação só vai para o log da aplicação.
 - **Migração Neon → Supabase (2026-07-23)**: dump completo do Neon (`pg_dump --schema=public --no-owner --no-acl --format=custom`) e restore no Supabase (`pg_restore --clean --if-exists`), rodado via Docker (`postgres:17`, sem instalar client localmente). Contagem de linhas conferida em todas as 12 tabelas antes do cutover. Secrets `SPRING_DATASOURCE_*` do Fly atualizados para o Supabase e app redeployado com sucesso (Flyway validou as 11 migrations sem diffs). **O projeto Neon não foi apagado** — manter como backup por alguns dias até validar estabilidade em produção, depois desprovisionar.
 - **Senha do Postgres do Neon e do Supabase foram expostas em texto puro numa conversa antes de serem usadas.** Recomendado resetar a senha do banco no painel do Supabase (Settings → Database → Reset database password) por precaução, e atualizar o secret `SPRING_DATASOURCE_PASSWORD` no Fly em seguida.
 - **Upload de foto de perfil** agora usa o próprio Postgres (tabela `stored_files`, ver `docs/superpowers/specs/2026-06-18-photo-storage-in-postgres-design.md`) — sem dependência externa de storage.

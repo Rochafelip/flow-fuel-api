@@ -131,7 +131,7 @@ class UserControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/activate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"token":"%s"}
+                        {"email":"ativar@test.com","token":"%s"}
                         """.formatted(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
@@ -141,10 +141,12 @@ class UserControllerIntegrationTest {
 
     @Test
     void activate_comTokenInvalido_retorna401() throws Exception {
+        registrarSemAtivar("invalido@test.com", "senha123");
+
         mockMvc.perform(post("/api/v1/auth/activate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"token":"token-que-nunca-existiu"}
+                        {"email":"invalido@test.com","token":"99999"}
                         """))
                 .andExpect(status().isUnauthorized());
     }
@@ -157,7 +159,7 @@ class UserControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/activate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"token":"%s"}
+                        {"email":"reuseativ@test.com","token":"%s"}
                         """.formatted(token)))
                 .andExpect(status().isOk());
 
@@ -165,7 +167,7 @@ class UserControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/activate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"token":"%s"}
+                        {"email":"reuseativ@test.com","token":"%s"}
                         """.formatted(token)))
                 .andExpect(status().isUnauthorized());
     }

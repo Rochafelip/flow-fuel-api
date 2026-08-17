@@ -27,6 +27,8 @@ import java.util.Map;
  *   <li>{@code POST /api/v1/auth/forgot-password} — 3 tentativas/hora</li>
  *   <li>{@code POST /api/v1/auth/register} — 10 tentativas/hora</li>
  *   <li>{@code POST /api/v1/auth/resend-activation} — 3 tentativas/hora</li>
+ *   <li>{@code POST /api/v1/auth/activate} — 5 tentativas/minuto (codigo de 6
+ *       digitos tem apenas 1.000.000 de combinacoes; sem isso seria forcavel por bruteforce)</li>
  * </ul>
  *
  * <p>Habilitado por padrao. Desligue com {@code flowfuel.rate-limit.enabled=false}
@@ -88,6 +90,11 @@ public class RateLimitingConfig {
                 BucketConfiguration.builder()
                         .addLimit(Bandwidth.builder().capacity(3)
                                 .refillGreedy(3, Duration.ofHours(1)).build())
+                        .build(),
+                AUTH_BASE + "/activate",
+                BucketConfiguration.builder()
+                        .addLimit(Bandwidth.builder().capacity(5)
+                                .refillGreedy(5, Duration.ofMinutes(1)).build())
                         .build());
         return new RateLimitFilter(limits, rateLimitProxyManager, FILTER_ORDER);
     }

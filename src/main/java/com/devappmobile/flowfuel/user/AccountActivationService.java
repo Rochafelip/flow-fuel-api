@@ -38,26 +38,29 @@ public class AccountActivationService {
         LocalDateTime now = LocalDateTime.now();
         tokenRepository.invalidateActiveByUserId(user.getId(), now);
 
-        String plaintext = OpaqueTokenGenerator.generatePlaintext();
+        String plaintext = OpaqueTokenGenerator.generateNumericCode();
         tokenRepository.save(new ActivationToken(user, OpaqueTokenGenerator.sha256(plaintext),
                 now.plusMinutes(tokenTtlMinutes)));
 
-        notifier.sendActivationLink(user, plaintext);
+        notifier.sendActivationCode(user, plaintext);
         return plaintext;
     }
 
     @Transactional
-    public TokenPairResponse activate(String plaintext) {
-        if (plaintext == null || plaintext.isBlank()) {
-            throw new AppException(ErrorCode.AUTH_ACTIVATION_INVALID, "Token de ativação ausente");
+    public TokenPairResponse activate(String email, String plaintext) {
+        if (email == null || email.isBlank() || plaintext == null || plaintext.isBlank()) {
+            throw new AppException(ErrorCode.AUTH_ACTIVATION_INVALID, "Email ou código de ativação ausente");
         }
 
-        ActivationToken token = tokenRepository.findByTokenHash(OpaqueTokenGenerator.sha256(plaintext))
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.AUTH_ACTIVATION_INVALID,
+                        "Token de ativação inválido ou expirado"));
+
+        ActivationToken token = tokenRepository.findByUserIdAndTokenHash(user.getId(), OpaqueTokenGenerator.sha256(plaintext))
                 .filter(ActivationToken::isUsable)
                 .orElseThrow(() -> new AppException(ErrorCode.AUTH_ACTIVATION_INVALID,
                         "Token de ativação inválido ou expirado"));
 
-        User user = token.getUser();
         user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
 
