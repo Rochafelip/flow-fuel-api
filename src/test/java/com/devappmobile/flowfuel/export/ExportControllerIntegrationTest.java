@@ -13,6 +13,8 @@ import com.devappmobile.flowfuel.vehicleevent.VehicleEventType;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.time.format.DateTimeFormatter;
@@ -28,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -139,6 +142,27 @@ class ExportControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+    }
+
+    @Test
+    void exportRefuels_pdf_retornaRelatorioComContentTypeEResumo() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/exports/refuels")
+                .param("vehicleId", vehicle.getId().toString())
+                .param("format", "pdf")
+                .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("flowfuel-refuels-toyota-corolla-")))
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        try (PdfReader reader = new PdfReader(content)) {
+            String text = new PdfTextExtractor(reader).getTextFromPage(1);
+            assertThat(text).contains("Relatório de Abastecimentos");
+            assertThat(text).contains("Toyota Corolla");
+            assertThat(text).contains("Total gasto: R$ 235,60");
+        }
     }
 
     @Test
