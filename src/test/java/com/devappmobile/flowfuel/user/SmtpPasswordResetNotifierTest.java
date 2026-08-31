@@ -32,6 +32,7 @@ class SmtpPasswordResetNotifierTest {
         notifier = new SmtpPasswordResetNotifier(mailSender);
         ReflectionTestUtils.setField(notifier, "from", "no-reply@flowfuel.app");
         ReflectionTestUtils.setField(notifier, "tokenTtlMinutes", 30L);
+        ReflectionTestUtils.setField(notifier, "linkBaseUrl", "http://localhost:5173/reset-password");
         when(mailSender.createMimeMessage())
                 .thenReturn(new MimeMessage(Session.getDefaultInstance(new Properties())));
     }
@@ -67,32 +68,35 @@ class SmtpPasswordResetNotifierTest {
     }
 
     @Test
-    void sendResetToken_incluiTokenNoHtml() throws Exception {
+    void sendResetToken_incluiLinkNoHtml() throws Exception {
         notifier.sendResetToken(buildUser("fulano@example.com"), "abc123token");
 
         String html = findPartContent(captureSentMessage(), "text/html");
 
-        assertThat(html).contains("abc123token");
+        assertThat(html)
+                .contains("http://localhost:5173/reset-password?")
+                .contains("token=abc123token")
+                .contains("email=fulano%40example.com");
     }
 
     @Test
-    void sendResetToken_incluiTokenNoPlainText() throws Exception {
+    void sendResetToken_incluiLinkNoPlainText() throws Exception {
         notifier.sendResetToken(buildUser("fulano@example.com"), "abc123token");
 
         String plain = findPartContent(captureSentMessage(), "text/plain");
 
-        assertThat(plain).contains("abc123token");
+        assertThat(plain)
+                .contains("http://localhost:5173/reset-password?")
+                .contains("token=abc123token")
+                .contains("email=fulano%40example.com");
     }
 
     @Test
-    void sendResetToken_naoIncluiLinkOuUrl() throws Exception {
-        notifier.sendResetToken(buildUser("fulano@example.com"), "abc123token");
+    void sendResetToken_urlEncodeEmailComCaracteresEspeciais() throws Exception {
+        notifier.sendResetToken(buildUser("fulano+teste@example.com"), "abc123token");
 
-        MimeMessage message = captureSentMessage();
-        String html = findPartContent(message, "text/html");
-        String plain = findPartContent(message, "text/plain");
+        String html = findPartContent(captureSentMessage(), "text/html");
 
-        assertThat(html).doesNotContain("http://").doesNotContain("https://");
-        assertThat(plain).doesNotContain("http://").doesNotContain("https://");
+        assertThat(html).contains("email=fulano%2Bteste%40example.com");
     }
 }

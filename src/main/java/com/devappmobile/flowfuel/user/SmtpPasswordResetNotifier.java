@@ -12,14 +12,21 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 /**
- * Implementacao real de {@link PasswordResetNotifier}: envia o token de reset
+ * Implementacao real de {@link PasswordResetNotifier}: envia um link de reset
  * por email via {@link JavaMailSender} (SMTP). Ativa quando
  * {@code flowfuel.mail.enabled=true} (prod/staging).
  *
  * <p>Mesmo padrao de {@link SmtpAccountActivationNotifier}: envia em
  * {@code multipart/alternative} (HTML + texto), provider-agnostico via
- * {@code spring.mail.*}.
+ * {@code spring.mail.*}. Diferente da ativacao (que usa codigo numerico), o
+ * reset de senha usa um token opaco longo — nao pratico para digitacao manual
+ * — entao o email traz um botao/link que abre {@code linkBaseUrl} com
+ * {@code ?token=...&email=...}, mesmo padrao que existiu no email de
+ * ativacao antes da mudanca para codigo (ver historico git, commit 9b54f3d).
  */
 @Component
 @ConditionalOnProperty(name = "flowfuel.mail.enabled", havingValue = "true")
@@ -38,10 +45,14 @@ public class SmtpPasswordResetNotifier implements PasswordResetNotifier {
     @Value("${flowfuel.password-reset.token-ttl-minutes:30}")
     private long tokenTtlMinutes;
 
+    @Value("${flowfuel.password-reset.link-base-url:http://localhost:5173/reset-password}")
+    private String linkBaseUrl;
+
     @Override
     public void sendResetToken(User user, String resetToken) {
         String greetingName = user.getName() != null ? " " + user.getName() : "";
         String validity = formatValidity(tokenTtlMinutes);
+        String resetUrl = buildResetUrl(user.getEmail(), resetToken);
 
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -49,8 +60,8 @@ public class SmtpPasswordResetNotifier implements PasswordResetNotifier {
             helper.setFrom(from);
             helper.setTo(user.getEmail());
             helper.setSubject("Redefinição de senha FlowFuel");
-            helper.setText(plainBody(greetingName, validity, resetToken),
-                    htmlBody(greetingName, validity, resetToken));
+            helper.setText(plainBody(greetingName, validity, resetUrl),
+                    htmlBody(greetingName, validity, resetUrl));
 
             mailSender.send(message);
             log.info("[PASSWORD-RESET] email enviado userId={} email={}", user.getId(), user.getEmail());
@@ -62,25 +73,29 @@ public class SmtpPasswordResetNotifier implements PasswordResetNotifier {
         }
     }
 
-    private static String plainBody(String greetingName, String validity, String resetToken) {
+    private String buildResetUrl(String email, String resetToken) {
+        String encodedToken = URLEncoder.encode(resetToken, StandardCharsets.UTF_8);
+        String encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
+        return "%s?token=%s&email=%s".formatted(linkBaseUrl, encodedToken, encodedEmail);
+    }
+
+    private static String plainBody(String greetingName, String validity, String resetUrl) {
         return """
                 Olá%s,
 
                 Recebemos uma solicitação para redefinir a senha da sua conta FlowFuel.
-                Use o código abaixo (válido por %s):
+                Clique no link abaixo para escolher uma nova senha (válido por %s):
 
                 %s
-
-                Digite esse código no app para escolher uma nova senha.
 
                 Se você não solicitou esta redefinição, ignore este email — sua senha
                 atual continua válida.
 
                 — Equipe FlowFuel"""
-                .formatted(greetingName, validity, resetToken);
+                .formatted(greetingName, validity, resetUrl);
     }
 
-    private static String htmlBody(String greetingName, String validity, String resetToken) {
+    private static String htmlBody(String greetingName, String validity, String resetUrl) {
         return """
                 <!DOCTYPE html>
                 <html lang="pt-BR">
@@ -102,13 +117,20 @@ public class SmtpPasswordResetNotifier implements PasswordResetNotifier {
                           <tr>
                             <td style="padding-bottom:32px;">
                               <p style="margin:0;font-size:15px;color:#555;line-height:1.6;">
-                                Use o código abaixo no app para escolher uma nova senha. Ele expira em %s.
+                                Clique no botão abaixo para escolher uma nova senha. O link expira em %s.
                               </p>
                             </td>
                           </tr>
                           <tr>
-                            <td style="padding-bottom:32px;" align="center">
-                              <span style="display:inline-block;background-color:#f4f4f4;color:#111;font-size:16px;font-weight:700;letter-spacing:1px;padding:16px 24px;border-radius:8px;word-break:break-all;">%s</span>
+                            <td style="padding-bottom:24px;" align="center">
+                              <a href="%s" style="display:inline-block;background-color:#16a34a;color:#ffffff;font-size:16px;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;">Redefinir senha</a>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding-bottom:32px;">
+                              <p style="margin:0;font-size:12px;color:#999;line-height:1.6;word-break:break-all;">
+                                Se o botão não funcionar, copie e cole este link no navegador:<br>%s
+                              </p>
                             </td>
                           </tr>
                           <tr>
@@ -124,7 +146,7 @@ public class SmtpPasswordResetNotifier implements PasswordResetNotifier {
                   </table>
                 </body>
                 </html>"""
-                .formatted(greetingName, validity, resetToken);
+                .formatted(greetingName, validity, resetUrl, resetUrl);
     }
 
     /** Converte o TTL em minutos numa frase amigavel: "1 hora", "2 horas", "30 minutos". */
