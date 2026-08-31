@@ -123,7 +123,8 @@ class AuthServiceTest {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
 
         assertThatThrownBy(() -> authService.register(dto))
-                .isInstanceOf(ConflictException.class);
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("reenviar o código de ativação");
         verify(userRepository, never()).save(any());
     }
 

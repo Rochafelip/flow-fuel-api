@@ -41,7 +41,9 @@ public class AuthService {
      */
     public UserResponseDTO register(UserRegisterDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
-            throw new ConflictException(ErrorCode.EMAIL_ALREADY_REGISTERED, "Email já cadastrado");
+            throw new ConflictException(ErrorCode.EMAIL_ALREADY_REGISTERED,
+                    "Este email já está cadastrado. Se você não conseguiu ativar a conta, "
+                            + "tente fazer login ou reenviar o código de ativação.");
         }
 
         User user = new User();
