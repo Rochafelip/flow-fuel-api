@@ -35,6 +35,18 @@ class ExportFileNameBuilderTest {
     }
 
     @Test
+    void build_comFormatoPdf_usaExtensaoPdf() {
+        Vehicle vehicle = new Vehicle();
+        vehicle.setBrand("Ford");
+        vehicle.setModel("Ka");
+
+        String fileName = ExportFileNameBuilder.build("events", vehicle, ExportFormat.PDF);
+
+        assertThat(fileName).isEqualTo(
+                "flowfuel-events-ford-ka-" + Year.now().getValue() + ".pdf");
+    }
+
+    @Test
     void build_semMarcaNemModelo_usaVeiculoMaisId() {
         Vehicle vehicle = new Vehicle();
         vehicle.setId(42L);

@@ -5,6 +5,7 @@ import com.devappmobile.flowfuel.exception.ForbiddenOperationException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import com.devappmobile.flowfuel.export.strategy.CsvExportStrategy;
 import com.devappmobile.flowfuel.export.strategy.ExcelExportStrategy;
+import com.devappmobile.flowfuel.export.strategy.PdfExportStrategy;
 import com.devappmobile.flowfuel.refuel.Refuel;
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.devappmobile.flowfuel.refuel.RefuelType;
@@ -42,6 +43,7 @@ class ExportServiceTest {
 
     @Spy private CsvExportStrategy csvExportStrategy = new CsvExportStrategy();
     @Spy private ExcelExportStrategy excelExportStrategy = new ExcelExportStrategy();
+    @Spy private PdfExportStrategy pdfExportStrategy = new PdfExportStrategy();
 
     private ExportService exportService;
 
@@ -52,7 +54,7 @@ class ExportServiceTest {
     void setUp() {
         exportService = new ExportService(
                 refuelRepository, vehicleEventRepository, vehicleRepository,
-                authorizationHelper, List.of(csvExportStrategy, excelExportStrategy));
+                authorizationHelper, List.of(csvExportStrategy, excelExportStrategy, pdfExportStrategy));
 
         owner = new User("owner@test.com", "hash", "Owner");
         owner.setId(1L);
@@ -108,6 +110,18 @@ class ExportServiceTest {
     }
 
     @Test
+    void exportRefuels_formatoPdf_usaContentTypeEExtensaoPdf() {
+        when(refuelRepository.findByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(List.of(
+                buildRefuel(LocalDateTime.of(2026, 6, 1, 10, 0), 1500, 40.0, 5.89)
+        ));
+
+        ExportResult result = exportService.exportRefuels(owner, 10L, null, null, "pdf");
+
+        assertThat(result.contentType()).isEqualTo("application/pdf");
+        assertThat(result.fileName()).endsWith(".pdf");
+    }
+
+    @Test
     void exportRefuels_vehicleInexistente_lancaResourceNotFoundException() {
         when(vehicleRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -126,7 +140,7 @@ class ExportServiceTest {
 
     @Test
     void exportRefuels_formatoInvalido_lancaExportValidationException() {
-        assertThatThrownBy(() -> exportService.exportRefuels(owner, 10L, null, null, "pdf"))
+        assertThatThrownBy(() -> exportService.exportRefuels(owner, 10L, null, null, "docx"))
                 .isInstanceOf(ExportValidationException.class);
     }
 

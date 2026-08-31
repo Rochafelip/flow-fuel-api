@@ -2,7 +2,8 @@ package com.devappmobile.flowfuel.export;
 
 public enum ExportFormat {
     CSV,
-    XLSX;
+    XLSX,
+    PDF;
 
     public static ExportFormat fromString(String value) {
         if (value == null) {

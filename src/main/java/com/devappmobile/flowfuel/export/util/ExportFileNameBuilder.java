@@ -16,7 +16,11 @@ public final class ExportFileNameBuilder {
 
     public static String build(String resourceType, Vehicle vehicle, ExportFormat format) {
         String slug = vehicleSlug(vehicle);
-        String extension = format == ExportFormat.XLSX ? "xlsx" : "csv";
+        String extension = switch (format) {
+            case XLSX -> "xlsx";
+            case PDF -> "pdf";
+            case CSV -> "csv";
+        };
         return "flowfuel-%s-%s-%d.%s".formatted(resourceType, slug, Year.now().getValue(), extension);
     }
 

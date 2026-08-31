@@ -21,8 +21,14 @@ class ExportFormatTest {
     }
 
     @Test
+    void fromString_pdfEmQualquerCaixa_retornaPDF() {
+        assertThat(ExportFormat.fromString("pdf")).isEqualTo(ExportFormat.PDF);
+        assertThat(ExportFormat.fromString("PDF")).isEqualTo(ExportFormat.PDF);
+    }
+
+    @Test
     void fromString_valorInvalido_lancaIllegalArgumentException() {
-        assertThatThrownBy(() -> ExportFormat.fromString("pdf"))
+        assertThatThrownBy(() -> ExportFormat.fromString("docx"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

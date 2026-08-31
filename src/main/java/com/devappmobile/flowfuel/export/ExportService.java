@@ -169,8 +169,10 @@ public class ExportService {
     }
 
     private String contentTypeFor(ExportFormat format) {
-        return format == ExportFormat.XLSX
-                ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                : "text/csv";
+        return switch (format) {
+            case XLSX -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case PDF -> "application/pdf";
+            case CSV -> "text/csv";
+        };
     }
 }

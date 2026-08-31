@@ -165,7 +165,7 @@ class ExportControllerIntegrationTest {
     void exportRefuels_formatoInvalido_retorna400() throws Exception {
         mockMvc.perform(get("/api/v1/exports/refuels")
                 .param("vehicleId", vehicle.getId().toString())
-                .param("format", "pdf")
+                .param("format", "docx")
                 .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isBadRequest());
     }
