@@ -81,7 +81,13 @@ public class AccountActivationService {
             return response;
         }
 
-        String plaintext = sendActivation(userOpt.get());
-        return exposeToken ? response.withToken(plaintext) : response;
+        try {
+            String plaintext = sendActivation(userOpt.get());
+            return exposeToken ? response.withToken(plaintext) : response;
+        } catch (RuntimeException ex) {
+            log.error("Falha ao reenviar ativacao (resposta padrao devolvida mesmo assim) userId={} email={}",
+                    userOpt.get().getId(), email, ex);
+            return response;
+        }
     }
 }

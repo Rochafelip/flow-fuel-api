@@ -137,4 +137,16 @@ class AccountActivationServiceTest {
                         .isEqualTo(ErrorCode.AUTH_ACTIVATION_INVALID));
         verifyNoInteractions(tokenRepository, tokenIssuer, auditLogService);
     }
+
+    @Test
+    void resendActivation_quandoEnvioFalha_naoPropagaExcecaoERetornaRespostaPadrao() {
+        when(userRepository.findByEmail(pendingUser.getEmail())).thenReturn(Optional.of(pendingUser));
+        doThrow(new IllegalStateException("Falha ao enviar email de ativacao"))
+                .when(notifier).sendActivationCode(eq(pendingUser), any());
+
+        AccountActivationResponse response = accountActivationService.resendActivation(pendingUser.getEmail());
+
+        assertThat(response).isEqualTo(AccountActivationResponse.standard());
+        verify(tokenRepository).save(any(ActivationToken.class));
+    }
 }
