@@ -15,6 +15,8 @@ import com.devappmobile.flowfuel.vehicle.VehicleRepository;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEvent;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEventType;
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -122,6 +124,25 @@ class ExportServiceTest {
     }
 
     @Test
+    void exportRefuels_formatoPdf_incluiCabecalhoDeVeiculoEResumoNoConteudo() throws Exception {
+        vehicle.setLicensePlate("ABC1D23");
+        when(refuelRepository.findByVehicleIdOrderByRefuelDateDesc(10L)).thenReturn(List.of(
+                buildRefuel(LocalDateTime.of(2026, 6, 1, 10, 0), 1500, 40.0, 5.0)
+        ));
+
+        ExportResult result = exportService.exportRefuels(owner, 10L, null, null, "pdf");
+
+        try (PdfReader reader = new PdfReader(result.content())) {
+            String text = new PdfTextExtractor(reader).getTextFromPage(1);
+            assertThat(text).contains("Relatório de Abastecimentos");
+            assertThat(text).contains("Toyota Corolla — ABC1D23");
+            assertThat(text).contains("Todo o histórico");
+            assertThat(text).contains("Total gasto: R$ 200,00");
+            assertThat(text).contains("Abastecimentos: 1");
+        }
+    }
+
+    @Test
     void exportRefuels_vehicleInexistente_lancaResourceNotFoundException() {
         when(vehicleRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -218,6 +239,27 @@ class ExportServiceTest {
 
         String content = new String(result.content());
         assertThat(content).contains("'=cmd|'/c calc'!A1");
+    }
+
+    @Test
+    void exportEvents_formatoPdf_incluiResumoPorCategoria() throws Exception {
+        when(vehicleEventRepository.findByVehicleIdOrderByEventDateDescCreatedAtDescIdDesc(10L))
+                .thenReturn(List.of(
+                        buildEvent(VehicleEventType.MAINTENANCE, LocalDate.of(2026, 6, 1), 150.0, "Revisão"),
+                        buildEvent(VehicleEventType.MAINTENANCE, LocalDate.of(2026, 5, 1), 50.0, "Troca de óleo"),
+                        buildEvent(VehicleEventType.CAR_WASH, LocalDate.of(2026, 4, 1), 40.0, "Lavagem")
+                ));
+
+        ExportResult result = exportService.exportEvents(owner, 10L, null, null, null, "pdf");
+
+        try (PdfReader reader = new PdfReader(result.content())) {
+            String text = new PdfTextExtractor(reader).getTextFromPage(1);
+            assertThat(text).contains("Relatório de Eventos");
+            assertThat(text).contains("Total gasto: R$ 240,00");
+            assertThat(text).contains("Eventos: 3");
+            assertThat(text).contains("MAINTENANCE: 2");
+            assertThat(text).contains("CAR_WASH: 1");
+        }
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.devappmobile.flowfuel.export.strategy.ExportMetadata;
 import com.devappmobile.flowfuel.export.strategy.ExportStrategy;
 import com.devappmobile.flowfuel.export.util.ExportFileNameBuilder;
 import com.devappmobile.flowfuel.refuel.Refuel;
+import com.devappmobile.flowfuel.refuel.RefuelConsumptionCalculator;
 import com.devappmobile.flowfuel.refuel.RefuelRepository;
 import com.devappmobile.flowfuel.user.User;
 import com.devappmobile.flowfuel.vehicle.Vehicle;
@@ -15,8 +16,10 @@ import com.devappmobile.flowfuel.vehicleevent.VehicleEventRepository;
 import com.devappmobile.flowfuel.vehicleevent.VehicleEventType;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -77,7 +80,11 @@ public class ExportService {
         }
 
         List<String[]> rows = refuels.stream().map(this::toRow).toList();
-        byte[] content = strategiesByFormat.get(format).export(REFUEL_HEADERS, rows, ExportMetadata.EMPTY);
+        ExportMetadata metadata = format == ExportFormat.PDF
+                ? new ExportMetadata("Relatório de Abastecimentos", vehicleLabel(vehicle),
+                        periodLabel(startDate, endDate), buildRefuelSummaryLines(refuels, vehicle))
+                : ExportMetadata.EMPTY;
+        byte[] content = strategiesByFormat.get(format).export(REFUEL_HEADERS, rows, metadata);
         String fileName = ExportFileNameBuilder.build("refuels", vehicle, format);
 
         return new ExportResult(content, fileName, contentTypeFor(format));
@@ -119,7 +126,11 @@ public class ExportService {
         }
 
         List<String[]> rows = events.stream().map(this::toRow).toList();
-        byte[] content = strategiesByFormat.get(format).export(EVENT_HEADERS, rows, ExportMetadata.EMPTY);
+        ExportMetadata metadata = format == ExportFormat.PDF
+                ? new ExportMetadata("Relatório de Eventos", vehicleLabel(vehicle),
+                        periodLabel(startDate, endDate), buildEventSummaryLines(events))
+                : ExportMetadata.EMPTY;
+        byte[] content = strategiesByFormat.get(format).export(EVENT_HEADERS, rows, metadata);
         String fileName = ExportFileNameBuilder.build("events", vehicle, format);
 
         return new ExportResult(content, fileName, contentTypeFor(format));
@@ -143,6 +154,63 @@ public class ExportService {
             return "'" + value;
         }
         return value;
+    }
+
+    private String vehicleLabel(Vehicle vehicle) {
+        String plate = vehicle.getLicensePlate();
+        String base = vehicle.getBrand() + " " + vehicle.getModel();
+        return (plate != null && !plate.isBlank()) ? base + " — " + plate : base;
+    }
+
+    private String periodLabel(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            return "Todo o histórico";
+        }
+        return startDate.format(DATE_FORMAT) + " – " + endDate.format(DATE_FORMAT);
+    }
+
+    private List<String> buildRefuelSummaryLines(List<Refuel> refuels, Vehicle vehicle) {
+        BigDecimal totalSpent = refuels.stream()
+                .map(Refuel::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalEnergy = refuels.stream()
+                .map(Refuel::getEnergyAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<Refuel> fullTankDesc = refuels.stream().filter(Refuel::getFullTank).toList();
+        Double averageConsumption = RefuelConsumptionCalculator.calculateAverageConsumption(fullTankDesc);
+
+        return List.of(
+                "Total gasto: R$ " + formatDecimal(totalSpent),
+                "Total abastecido: " + formatDecimal(totalEnergy) + " " + vehicle.getEnergyUnit(),
+                "Consumo médio: " + (averageConsumption > 0 ? formatDecimal(averageConsumption) : "-")
+                        + " " + vehicle.getConsumptionUnit(),
+                "Abastecimentos: " + refuels.size()
+        );
+    }
+
+    private List<String> buildEventSummaryLines(List<VehicleEvent> events) {
+        BigDecimal totalSpent = events.stream()
+                .map(VehicleEvent::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Map<VehicleEventType, Long> countByType = events.stream()
+                .collect(Collectors.groupingBy(VehicleEvent::getType, Collectors.counting()));
+
+        List<String> lines = new ArrayList<>();
+        lines.add("Total gasto: R$ " + formatDecimal(totalSpent));
+        lines.add("Eventos: " + events.size());
+        countByType.entrySet().stream()
+                .sorted(Map.Entry.<VehicleEventType, Long>comparingByValue().reversed())
+                .forEach(entry -> lines.add(entry.getKey().name() + ": " + entry.getValue()));
+        return lines;
+    }
+
+    private String formatDecimal(BigDecimal value) {
+        return formatDecimal(value.doubleValue());
+    }
+
+    private String formatDecimal(double value) {
+        return "%.2f".formatted(value).replace('.', ',');
     }
 
     private Vehicle findOwnedVehicle(User user, Long vehicleId) {
