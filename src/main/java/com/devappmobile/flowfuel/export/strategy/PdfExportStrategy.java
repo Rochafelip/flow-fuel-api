@@ -29,7 +29,7 @@ public class PdfExportStrategy implements ExportStrategy {
     }
 
     @Override
-    public byte[] export(String[] headers, List<String[]> rows) {
+    public byte[] export(String[] headers, List<String[]> rows, ExportMetadata metadata) {
         Document document = new Document(PageSize.A4.rotate(), 24, 24, 24, 24);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 

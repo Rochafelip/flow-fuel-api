@@ -27,7 +27,7 @@ class PdfExportStrategyTest {
                 new String[]{"01/07/2026", "CAR_WASH", "40,00"}
         );
 
-        byte[] result = strategy.export(headers, rows);
+        byte[] result = strategy.export(headers, rows, ExportMetadata.EMPTY);
 
         try (PdfReader reader = new PdfReader(result)) {
             String text = new PdfTextExtractor(reader).getTextFromPage(1);
@@ -41,7 +41,7 @@ class PdfExportStrategyTest {
     void export_semLinhas_geraApenasCabecalho() throws IOException {
         String[] headers = {"Data", "Tipo"};
 
-        byte[] result = strategy.export(headers, List.of());
+        byte[] result = strategy.export(headers, List.of(), ExportMetadata.EMPTY);
 
         try (PdfReader reader = new PdfReader(result)) {
             String text = new PdfTextExtractor(reader).getTextFromPage(1);

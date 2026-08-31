@@ -8,5 +8,5 @@ public interface ExportStrategy {
 
     ExportFormat supportedFormat();
 
-    byte[] export(String[] headers, List<String[]> rows);
+    byte[] export(String[] headers, List<String[]> rows, ExportMetadata metadata);
 }

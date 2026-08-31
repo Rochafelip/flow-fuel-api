@@ -25,7 +25,7 @@ public class ExcelExportStrategy implements ExportStrategy {
     }
 
     @Override
-    public byte[] export(String[] headers, List<String[]> rows) {
+    public byte[] export(String[] headers, List<String[]> rows, ExportMetadata metadata) {
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             XSSFSheet sheet = workbook.createSheet(SHEET_NAME);
 

@@ -29,7 +29,7 @@ class CsvExportStrategyTest {
         rows.add(new String[]{"25/06/2026", "MAINTENANCE", "150,00"});
         rows.add(new String[]{"01/07/2026", "CAR_WASH", "40,00"});
 
-        byte[] result = strategy.export(headers, rows);
+        byte[] result = strategy.export(headers, rows, ExportMetadata.EMPTY);
         List<String> lines = readLines(result);
 
         assertThat(lines).containsExactly(
@@ -45,7 +45,7 @@ class CsvExportStrategyTest {
         List<String[]> rows = new ArrayList<>();
         rows.add(new String[]{"25/06/2026", "Troca de óleo, filtro e correia"});
 
-        byte[] result = strategy.export(headers, rows);
+        byte[] result = strategy.export(headers, rows, ExportMetadata.EMPTY);
         List<String> lines = readLines(result);
 
         assertThat(lines).containsExactly(
@@ -58,7 +58,7 @@ class CsvExportStrategyTest {
     void export_semLinhas_geraApenasCabecalho() throws IOException {
         String[] headers = {"Data", "Tipo"};
 
-        byte[] result = strategy.export(headers, new ArrayList<>());
+        byte[] result = strategy.export(headers, new ArrayList<>(), ExportMetadata.EMPTY);
         List<String> lines = readLines(result);
 
         assertThat(lines).containsExactly("Data,Tipo");

@@ -31,7 +31,7 @@ class ExcelExportStrategyTest {
                 new String[]{"01/07/2026", "CAR_WASH", "40,00"}
         );
 
-        byte[] result = strategy.export(headers, rows);
+        byte[] result = strategy.export(headers, rows, ExportMetadata.EMPTY);
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
             XSSFSheet sheet = workbook.getSheetAt(0);
@@ -61,7 +61,7 @@ class ExcelExportStrategyTest {
     void export_semLinhas_geraApenasCabecalho() throws IOException {
         String[] headers = {"Data", "Tipo"};
 
-        byte[] result = strategy.export(headers, List.of());
+        byte[] result = strategy.export(headers, List.of(), ExportMetadata.EMPTY);
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
             XSSFSheet sheet = workbook.getSheetAt(0);

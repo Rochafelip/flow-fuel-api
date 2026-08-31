@@ -19,7 +19,7 @@ public class CsvExportStrategy implements ExportStrategy {
     }
 
     @Override
-    public byte[] export(String[] headers, List<String[]> rows) {
+    public byte[] export(String[] headers, List<String[]> rows, ExportMetadata metadata) {
         StringBuilder csv = new StringBuilder();
         csv.append(toCsvLine(headers));
 

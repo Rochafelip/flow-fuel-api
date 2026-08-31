@@ -2,6 +2,7 @@ package com.devappmobile.flowfuel.export;
 
 import com.devappmobile.flowfuel.common.AuthorizationHelper;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
+import com.devappmobile.flowfuel.export.strategy.ExportMetadata;
 import com.devappmobile.flowfuel.export.strategy.ExportStrategy;
 import com.devappmobile.flowfuel.export.util.ExportFileNameBuilder;
 import com.devappmobile.flowfuel.refuel.Refuel;
@@ -76,7 +77,7 @@ public class ExportService {
         }
 
         List<String[]> rows = refuels.stream().map(this::toRow).toList();
-        byte[] content = strategiesByFormat.get(format).export(REFUEL_HEADERS, rows);
+        byte[] content = strategiesByFormat.get(format).export(REFUEL_HEADERS, rows, ExportMetadata.EMPTY);
         String fileName = ExportFileNameBuilder.build("refuels", vehicle, format);
 
         return new ExportResult(content, fileName, contentTypeFor(format));
@@ -118,7 +119,7 @@ public class ExportService {
         }
 
         List<String[]> rows = events.stream().map(this::toRow).toList();
-        byte[] content = strategiesByFormat.get(format).export(EVENT_HEADERS, rows);
+        byte[] content = strategiesByFormat.get(format).export(EVENT_HEADERS, rows, ExportMetadata.EMPTY);
         String fileName = ExportFileNameBuilder.build("events", vehicle, format);
 
         return new ExportResult(content, fileName, contentTypeFor(format));
