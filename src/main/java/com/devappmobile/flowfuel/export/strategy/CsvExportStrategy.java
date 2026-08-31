@@ -10,6 +10,7 @@ import java.util.List;
 @Component
 public class CsvExportStrategy implements ExportStrategy {
 
+    private static final byte[] UTF8_BOM = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
     private static final String SEPARATOR = ",";
     private static final String LINE_BREAK = "\n";
 
@@ -28,6 +29,7 @@ public class CsvExportStrategy implements ExportStrategy {
         }
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.writeBytes(UTF8_BOM);
         out.writeBytes(csv.toString().getBytes(StandardCharsets.UTF_8));
         return out.toByteArray();
     }

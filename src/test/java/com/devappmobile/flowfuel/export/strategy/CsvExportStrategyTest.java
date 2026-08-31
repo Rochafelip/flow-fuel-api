@@ -23,6 +23,17 @@ class CsvExportStrategyTest {
     }
 
     @Test
+    void export_prefixaConteudoComBomUtf8() {
+        String[] headers = {"Data", "Preço"};
+        List<String[]> rows = List.<String[]>of(new String[]{"25/06/2026", "150,00"});
+
+        byte[] result = strategy.export(headers, rows, ExportMetadata.EMPTY);
+
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        assertThat(java.util.Arrays.copyOfRange(result, 0, 3)).isEqualTo(bom);
+    }
+
+    @Test
     void export_comCabecalhoELinhas_geraCsvComVirgulaComoSeparador() throws IOException {
         String[] headers = {"Data", "Tipo", "Valor"};
         List<String[]> rows = new ArrayList<>();
@@ -67,7 +78,11 @@ class CsvExportStrategyTest {
     private List<String> readLines(byte[] content) throws IOException {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(new ByteArrayInputStream(content), StandardCharsets.UTF_8))) {
-            return reader.lines().toList();
+            List<String> lines = new ArrayList<>(reader.lines().toList());
+            if (!lines.isEmpty() && lines.get(0).startsWith("﻿")) {
+                lines.set(0, lines.get(0).substring(1));
+            }
+            return lines;
         }
     }
 }
