@@ -51,14 +51,17 @@ flyctl secrets set \
   FLOWFUEL_RATE_LIMIT_ENABLED=false \
   MANAGEMENT_HEALTH_MAIL_ENABLED=false \
   MAIL_ENABLED=true \
-  MAIL_HOST=smtp.sendgrid.net \
+  MAIL_HOST=smtp.gmail.com \
   MAIL_PORT=587 \
-  MAIL_USERNAME=apikey \
-  MAIL_PASSWORD="<api-key-do-sendgrid>" \
-  MAIL_FROM="flowfuelapp@gmail.com"
+  MAIL_USERNAME=flowfuelapp@gmail.com \
+  MAIL_PASSWORD="<senha-de-app-do-gmail>" \
+  MAIL_FROM="flowfuelapp@gmail.com" \
+  PASSWORD_RESET_LINK_BASE_URL="<url-do-frontend-em-producao>/reset-password"
 ```
 
-(`MAIL_USERNAME` no SendGrid é sempre a string literal `apikey`, não o seu usuário. `MAIL_FROM` precisa estar verificado em Settings → Sender Authentication no painel do SendGrid antes do envio funcionar.)
+(`MAIL_PASSWORD` é uma "senha de app" do Google — requer verificação em duas etapas ativa na conta e é gerada em `myaccount.google.com/apppasswords`; não é a senha normal da conta. `PASSWORD_RESET_LINK_BASE_URL` é obrigatório em `prod`/`staging`: se ausente ou apontando para `localhost`, a aplicação falha o boot de propósito — ver `PasswordResetLinkValidator`.)
+
+Trocamos de SendGrid para Gmail SMTP em 2026-08-31 depois que o free tier do SendGrid esgotou os créditos e passou a rejeitar autenticação (`451 Authentication failed: Maximum credits exceeded`), derrubando o cadastro de novas contas (ver "Envio de email" nos Pontos de atenção do [README](../README.md#deploy-produção)). Gmail é gratuito e suficiente para o volume de 1-2 usuários deste projeto, mas mais sujeito a cair em spam (sem domínio próprio/DMARC) e tem limite diário (~500 emails/dia) — se o volume crescer, considerar voltar a um provedor transacional dedicado (SendGrid, Brevo, etc.) com domínio verificado.
 
 ### 6. Deploy
 ```bash
@@ -121,11 +124,12 @@ na Cloudflare — hoje as imagens são servidas pela URL pública padrão do R2 
 2. **OOM kill com 256MB de RAM** — a JVM com Spring Security + JPA + AWS S3 SDK + Sentry não cabe em 256MB mesmo limitando o heap a 75% (`-XX:MaxRAMPercentage=75`). A máquina entrava em loop de crash/restart. **Correção**: subir `[[vm]] memory` para `512mb` no [fly.toml](../fly.toml).
 3. **Rate limiting exige Redis** — `RateLimitingConfig` tenta conectar em `redis://localhost:6379` por padrão (`REDIS_URL` env var), que não existe no Fly. **Correção**: desligar via `FLOWFUEL_RATE_LIMIT_ENABLED=false` (flag já existia no código, usada também nos testes de integração). Alternativa não aplicada: provisionar Redis externo (ex. Upstash) e setar `REDIS_URL`.
 4. **`/actuator/health` retornando DOWN por causa do Mail health indicator** — com `MAIL_ENABLED=false` o envio de email é desligado, mas o Spring Boot ainda autoconfigura o `MailHealthIndicator` (porque `spring.mail.host` está definido, mesmo vazio), e ele falha por falta de credenciais. **Correção**: `MANAGEMENT_HEALTH_MAIL_ENABLED=false`.
+5. **App fora do ar após adicionar `PasswordResetLinkValidator` (2026-08-31)** — o validador (fail-fast em `prod`/`staging` se o link de reset de senha apontar pra `localhost`) subiu sem o secret `PASSWORD_RESET_LINK_BASE_URL` configurado no Fly, então caía sempre no default de dev e derrubava o boot. **Correção**: setar o secret (ver passo 5). No mesmo dia, o SendGrid também esgotou os créditos do free tier (`451 Authentication failed: Maximum credits exceeded`) e, como `AuthService.register` não tratava falha de envio de email, todo cadastro de conta nova passou a devolver 500. **Correção**: `register` agora loga o erro de envio em vez de propagá-lo (a conta é criada normalmente mesmo se o email falhar), e o provedor SMTP foi trocado de SendGrid para Gmail.
 
 ## Pontos de atenção / pendências
 
 - **Rate limiting está em fail-open em produção** (sem Redis provisionado, ver passo 7) — os endpoints de auth (`/login`, `/register`, `/forgot-password`, `/resend-activation`, `/activate`) não têm proteção contra brute-force até que o Redis do passo 7 seja provisionado e `REDIS_URL` configurada.
-- **Envio de e-mail de ativação de conta**: configurar via os secrets `MAIL_*` do passo 5 (SendGrid). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o código de ativação só vai para o log da aplicação.
+- **Envio de e-mail (ativação de conta e redefinição de senha)**: configurar via os secrets `MAIL_*` do passo 5 (Gmail SMTP). Sem eles (`MAIL_ENABLED=false`, default do [application.properties](../src/main/resources/application.properties#L65)), o código/link só vai para o log da aplicação. Gmail é gratuito mas tem limite diário (~500/dia) e mais chance de cair em spam — reavaliar se o volume de usuários crescer.
 - **Migração Neon → Supabase (2026-07-23)**: dump completo do Neon (`pg_dump --schema=public --no-owner --no-acl --format=custom`) e restore no Supabase (`pg_restore --clean --if-exists`), rodado via Docker (`postgres:17`, sem instalar client localmente). Contagem de linhas conferida em todas as 12 tabelas antes do cutover. Secrets `SPRING_DATASOURCE_*` do Fly atualizados para o Supabase e app redeployado com sucesso (Flyway validou as 11 migrations sem diffs). **O projeto Neon não foi apagado** — manter como backup por alguns dias até validar estabilidade em produção, depois desprovisionar.
 - **Senha do Postgres do Neon e do Supabase foram expostas em texto puro numa conversa antes de serem usadas.** Recomendado resetar a senha do banco no painel do Supabase (Settings → Database → Reset database password) por precaução, e atualizar o secret `SPRING_DATASOURCE_PASSWORD` no Fly em seguida.
 - **Upload de foto de perfil** agora usa o próprio Postgres (tabela `stored_files`, ver `docs/superpowers/specs/2026-06-18-photo-storage-in-postgres-design.md`) — sem dependência externa de storage.

@@ -71,7 +71,14 @@ Usuários criados via `POST /api/v1/auth/register` nascem com status `PENDING_AC
 1. No registro, o backend sorteia um código numérico de 6 dígitos (hashado em SHA-256 no banco, TTL configurável via `flowfuel.account-activation.token-ttl-minutes`, default 60 min) e envia por email para o usuário digitar no app. A unicidade do hash é por `(user_id, token_hash)`, não global — colisões de código entre usuários diferentes são esperadas dado o espaço pequeno de valores.
 2. `POST /api/v1/auth/activate` com `{"email": "...", "token": "123456"}` valida o código (escopado ao usuário do email), marca o usuário como `ACTIVE` e já devolve o par `accessToken`/`refreshToken` (auto-login — o usuário não precisa logar manualmente após ativar). O endpoint é limitado a 5 tentativas/minuto por IP para dificultar força bruta (só 1.000.000 de combinações possíveis).
 3. `POST /api/v1/auth/resend-activation` com `{"email": "..."}` reenvia o código (não revela se o email existe ou já está ativo, para evitar enumeração de contas).
-4. Envio de email é uma estratégia plugável: com `MAIL_ENABLED=false` (default em dev) o código só é logado (stub); com `MAIL_ENABLED=true` é enviado por SMTP (SendGrid) em HTML, com o código em destaque.
+4. Envio de email é uma estratégia plugável: com `MAIL_ENABLED=false` (default em dev) o código só é logado (stub); com `MAIL_ENABLED=true` é enviado por SMTP (Gmail) em HTML, com o código em destaque. Falha no envio (provedor fora do ar, quota estourada) não derruba o cadastro — a conta é criada normalmente e o erro fica só no log; o usuário pode pedir um novo código depois via `/resend-activation`.
+
+### Redefinição de senha ("esqueci minha senha")
+
+1. `POST /api/v1/auth/forgot-password` com `{"email": "..."}` sempre responde com a mesma mensagem genérica (evita enumeração de contas) e, se o email existir, gera um token opaco (hash SHA-256, uso único, TTL configurável via `flowfuel.password-reset.token-ttl-minutes`, default 30 min).
+2. O token é enviado por email como um link clicável (`{PASSWORD_RESET_LINK_BASE_URL}?token=...&email=...`) que abre a tela de redefinição no frontend já preenchida — diferente da ativação de conta, que usa um código de 6 dígitos digitado manualmente.
+3. `POST /api/v1/auth/reset-password` com `{"token": "...", "newPassword": "..."}` valida o token, atualiza a senha e revoga todos os refresh tokens ativos do usuário (precisa logar de novo em todos os dispositivos).
+4. Em `prod`/`staging`, `PasswordResetLinkValidator` falha o boot da aplicação se `PASSWORD_RESET_LINK_BASE_URL` estiver ausente ou apontando para `localhost` — evita enviar emails reais com link quebrado.
 
 ### Login e par de tokens
 
@@ -110,6 +117,8 @@ Toda resposta (sucesso ou erro) inclui o header `X-Request-Id` com um UUID gerad
 | POST   | `/register`                         | Cria usuário (status inicial `PENDING_ACTIVATION`)     |
 | POST   | `/activate`                         | Ativa a conta, devolve par de tokens (auto-login)      |
 | POST   | `/resend-activation`                | Reenvia o email de ativação                            |
+| POST   | `/forgot-password`                  | Solicita redefinição de senha (envia link por email)   |
+| POST   | `/reset-password`                   | Redefine a senha com o token do link                   |
 | POST   | `/login`                            | Autentica e retorna par `accessToken` + `refreshToken` |
 | POST   | `/refresh`                          | Rotaciona o par de tokens                              |
 | POST   | `/logout`                           | Revoga o `refreshToken` da sessão atual                |
@@ -267,7 +276,7 @@ A API está em produção na Fly.io (app `flowfuel-api`, região `gru`), com dep
 Pontos de atenção do ambiente atual:
 
 - **Rate limiting (bucket4j) ainda roda em fail-open em produção** — o filtro está habilitado (`RATE_LIMIT_ENABLED=true` por padrão), mas como nenhum Redis foi provisionado em prod ainda, requisições passam sem limite (log de warning), silenciosamente sem enforcement. Dev local já tem Redis via `docker-compose.yml` e roda em modo enforce. Risco pendente nos endpoints de auth até o Redis de produção (Upstash/Fly) ser provisionado — ver [docs/superpowers/specs/2026-06-25-provision-redis-rate-limit-design.md](docs/superpowers/specs/2026-06-25-provision-redis-rate-limit-design.md).
-- Email transacional (ativação de conta) via **SendGrid SMTP**, com `MAIL_FROM=flowfuelapp@gmail.com` — sender Gmail sem domínio próprio, sujeito a cair em spam por falha de DMARC.
+- Email transacional (ativação de conta e redefinição de senha) via **Gmail SMTP** (`MAIL_FROM=flowfuelapp@gmail.com`, trocado do SendGrid em 2026-08-31 após o free tier esgotar os créditos) — sender Gmail sem domínio próprio, sujeito a cair em spam por falha de DMARC, e limitado a ~500 emails/dia. Reavaliar um provedor transacional dedicado se o volume de usuários crescer.
 - Health check do Fly aponta para `/actuator/health`.
 
 ## Observabilidade
