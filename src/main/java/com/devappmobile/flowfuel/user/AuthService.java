@@ -9,6 +9,8 @@ import com.devappmobile.flowfuel.exception.BusinessRuleException;
 import com.devappmobile.flowfuel.exception.ConflictException;
 import com.devappmobile.flowfuel.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
@@ -30,6 +34,10 @@ public class AuthService {
      * Cadastra um novo usuario com status {@link UserStatus#PENDING_ACTIVATION} e
      * dispara o envio do link de ativacao por email. NAO loga o usuario: o login
      * so passa a funcionar apos a confirmacao do email (ver {@link #login}).
+     *
+     * <p>Falha no envio do email (provedor fora do ar, quota estourada, etc.) NAO
+     * derruba o cadastro — a conta ja foi persistida nesse ponto. O erro e apenas
+     * logado; o usuario pode pedir um novo codigo depois via resend-activation.
      */
     public UserResponseDTO register(UserRegisterDTO dto) {
         if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
@@ -44,7 +52,12 @@ public class AuthService {
         user.setStatus(UserStatus.PENDING_ACTIVATION);
 
         User saved = userRepository.save(user);
-        accountActivationService.sendActivation(saved);
+        try {
+            accountActivationService.sendActivation(saved);
+        } catch (RuntimeException ex) {
+            log.error("Falha ao enviar ativacao no cadastro (conta criada mesmo assim) userId={} email={}",
+                    saved.getId(), saved.getEmail(), ex);
+        }
         return UserResponseDTO.from(saved);
     }
 

@@ -91,6 +91,30 @@ class AuthServiceTest {
     }
 
     @Test
+    void register_quandoEnvioDeAtivacaoFalha_contaAindaEhCriadaComSucesso() {
+        UserRegisterDTO dto = new UserRegisterDTO();
+        dto.setEmail("novo@example.com");
+        dto.setPassword("senha123");
+        dto.setName("Novo Usuario");
+
+        when(userRepository.findByEmail("novo@example.com")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode("senha123")).thenReturn("hashed");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(2L);
+            return u;
+        });
+        doThrow(new IllegalStateException("Falha ao enviar email de ativacao"))
+                .when(accountActivationService).sendActivation(any(User.class));
+
+        UserResponseDTO response = authService.register(dto);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getEmail()).isEqualTo("novo@example.com");
+        verify(userRepository).save(argThat(u -> u.getStatus() == UserStatus.PENDING_ACTIVATION));
+    }
+
+    @Test
     void register_comEmailDuplicado_lancaConflictSemSalvar() {
         UserRegisterDTO dto = new UserRegisterDTO();
         dto.setEmail("test@example.com");
