@@ -6,6 +6,7 @@ import com.lowagie.text.DocumentException;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
 import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
@@ -19,6 +20,9 @@ import java.util.List;
 @Component
 public class PdfExportStrategy implements ExportStrategy {
 
+    private static final Font TITLE_FONT = new Font(Font.HELVETICA, 16, Font.BOLD, Color.BLACK);
+    private static final Font LABEL_FONT = new Font(Font.HELVETICA, 11, Font.NORMAL, Color.DARK_GRAY);
+    private static final Font SUMMARY_FONT = new Font(Font.HELVETICA, 10, Font.NORMAL, Color.BLACK);
     private static final Font HEADER_FONT = new Font(Font.HELVETICA, 10, Font.BOLD, Color.WHITE);
     private static final Font BODY_FONT = new Font(Font.HELVETICA, 9);
     private static final Color HEADER_BACKGROUND = new Color(51, 102, 51);
@@ -36,6 +40,8 @@ public class PdfExportStrategy implements ExportStrategy {
         try {
             PdfWriter.getInstance(document, out);
             document.open();
+
+            addReportHeader(document, metadata);
 
             PdfPTable table = new PdfPTable(headers.length);
             table.setWidthPercentage(100);
@@ -57,6 +63,23 @@ public class PdfExportStrategy implements ExportStrategy {
         }
 
         return out.toByteArray();
+    }
+
+    private void addReportHeader(Document document, ExportMetadata metadata) throws DocumentException {
+        if (metadata.reportTitle().isEmpty()) {
+            return;
+        }
+
+        document.add(new Paragraph(metadata.reportTitle(), TITLE_FONT));
+        document.add(new Paragraph(metadata.vehicleLabel(), LABEL_FONT));
+        document.add(new Paragraph(metadata.periodLabel(), LABEL_FONT));
+        document.add(new Paragraph(" "));
+
+        for (String line : metadata.summaryLines()) {
+            document.add(new Paragraph(line, SUMMARY_FONT));
+        }
+
+        document.add(new Paragraph(" "));
     }
 
     private PdfPCell headerCell(String text) {
