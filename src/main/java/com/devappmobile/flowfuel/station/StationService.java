@@ -18,8 +18,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.util.ArrayList;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -133,7 +133,7 @@ public class StationService {
             return cached.get();
         }
 
-        List<StationResponseDTO> stations = googlePlacesClient.searchNearby(lat, lng, radiusMeters);
+        List<StationResponseDTO> stations = new ArrayList<>(googlePlacesClient.searchNearby(lat, lng, radiusMeters));
 
         stations.forEach(station -> station.setDistanceMeters(
                 HaversineUtil.distanceMeters(lat, lng, station.getLatitude(), station.getLongitude())));

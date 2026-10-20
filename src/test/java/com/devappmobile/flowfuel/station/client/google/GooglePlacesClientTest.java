@@ -3,9 +3,9 @@ package com.devappmobile.flowfuel.station.client.google;
 import com.devappmobile.flowfuel.exception.ExternalServiceUnavailableException;
 import com.devappmobile.flowfuel.station.StationType;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 
 import java.util.List;
 
@@ -19,10 +19,11 @@ class GooglePlacesClientTest {
 
     @BeforeEach
     void setUp() {
+        ObjectMapper objectMapper = new ObjectMapper();
         clientWithoutKey = new GooglePlacesClient(
-                RestClient.builder(), "https://places.googleapis.com", "");
+                "https://places.googleapis.com", "", objectMapper);
         clientWithKey = new GooglePlacesClient(
-                RestClient.builder(), "https://places.googleapis.com", "test-key");
+                "https://places.googleapis.com", "test-key", objectMapper);
     }
 
     @Test

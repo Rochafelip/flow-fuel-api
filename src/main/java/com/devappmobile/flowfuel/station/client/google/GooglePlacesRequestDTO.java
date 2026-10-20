@@ -1,28 +1,17 @@
 package com.devappmobile.flowfuel.station.client.google;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
 
-@Getter
-@Builder
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class GooglePlacesRequestDTO {
-    private Location location;
+    private LocationRestriction locationRestriction;
     private List<String> includedTypes;
     private Integer maxResultCount;
     private String rankPreference;
-
-    @Getter
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Location {
-        private Double latitude;
-        private Double longitude;
-    }
 }
