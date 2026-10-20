@@ -50,7 +50,7 @@ public class GooglePlacesClient {
         }
 
         String jsonBody = String.format(
-                "{\"locationRestriction\":{\"circle\":{\"center\":{\"latitude\":%s,\"longitude\":%s},\"radius\":%s}},\"includedTypes\":[\"gas_station\"],\"maxResultCount\":20,\"rankPreference\":\"DISTANCE\"}",
+                "{\"locationRestriction\":{\"circle\":{\"center\":{\"latitude\":%s,\"longitude\":%s},\"radius\":%s}},\"includedTypes\":[\"gas_station\"],\"maxResultCount\":60,\"rankPreference\":\"DISTANCE\"}",
                 lat, lng, radiusMeters
         );
 
