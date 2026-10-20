@@ -38,7 +38,8 @@
       "Bash(echo \"EXIT_CODE=$?\")",
       "Bash(mvn -Dtest=UserTest,UserControllerIntegrationTest,VehicleControllerIntegrationTest,UserServiceTest test)",
       "Bash(mvn -q test -Dtest=JwtSecretConfigTest)",
-      "Bash(mvn -q -Dtest=UserControllerIntegrationTest,VehicleControllerIntegrationTest test)"
+      "Bash(mvn -q -Dtest=UserControllerIntegrationTest,VehicleControllerIntegrationTest test)",
+      "Bash(npx vitest *)"
     ]
   }
 }

@@ -33,6 +33,12 @@ tags:
     description: Consulta de logs de auditoria (admin-only)
   - name: Devices
     description: Registro de tokens de dispositivo para push notification (FCM)
+  - name: VehicleShares
+    description: Compartilhamento temporário de veículo com outro usuário (convite, aceite, revogação)
+  - name: Stations
+    description: Busca de postos/estações de recarga próximos e geocodificação de localidade
+  - name: Exports
+    description: Exportação de abastecimentos e eventos em CSV, XLSX ou PDF
 
 paths:
   /:
@@ -1194,6 +1200,415 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenNotOwner"
 
+  /api/v1/vehicle-shares:
+    post:
+      tags: [VehicleShares]
+      summary: Convida outro usuário para usar um veículo (cria compartilhamento PENDING)
+      description: >-
+        Somente o dono do veículo pode convidar (AuthorizationHelper.ensureOwnsVehicle).
+        O convidado precisa já ter conta (busca por e-mail exato em `users`). Só pode
+        existir um compartilhamento PENDING ou ACTIVE por veículo (checagem no service +
+        índice único parcial `idx_vehicle_shares_active_unique`, V11). Dispara push
+        `vehicle_share_invite` para os dispositivos do convidado
+        (deepLink `flowfuel://vehicle-share/{id}`). Retorna 200 (não 201).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleShareRequestDTO"
+            examples:
+              default:
+                value:
+                  vehicleId: 12
+                  inviteeEmail: "maria.souza@example.com"
+                  durationDays: 7
+      responses:
+        "200":
+          description: Convite criado com status PENDING
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleShareResponseDTO"
+              examples:
+                pending:
+                  value:
+                    id: 31
+                    vehicleId: 12
+                    vehicleBrand: Fiat
+                    vehicleModel: Argo
+                    ownerId: 4
+                    ownerName: João Silva
+                    guestId: 9
+                    guestName: Maria Souza
+                    status: PENDING
+                    createdAt: "2026-10-14T09:12:44"
+                    respondedAt: null
+                    expiresAt: null
+        "400":
+          description: >-
+            Validação do corpo (VALIDATION_FAILED) ou convite para o próprio e-mail
+            (BUSINESS_RULE_VIOLATED, "Não é possível compartilhar o veículo com você mesmo").
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              examples:
+                selfInvite:
+                  value:
+                    type: https://flowfuel.app/errors/BUSINESS_RULE_VIOLATED
+                    title: Regra de negócio violada
+                    status: 400
+                    detail: Não é possível compartilhar o veículo com você mesmo
+                    code: BUSINESS_RULE_VIOLATED
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          description: >-
+            Veículo não encontrado ou nenhum usuário com `inviteeEmail`
+            (detail: "Usuário não encontrado: {email}").
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+        "409":
+          description: Veículo já possui um compartilhamento PENDING ou ACTIVE
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                code: CONFLICT
+                status: 409
+                detail: Veículo já possui um compartilhamento pendente ou ativo
+
+  /api/v1/vehicle-shares/{id}/accept:
+    post:
+      tags: [VehicleShares]
+      summary: Convidado aceita o convite (PENDING → ACTIVE)
+      description: >-
+        Só o convidado (`guest`) pode aceitar. Define `respondedAt = now` e
+        `expiresAt = now + durationDays`. O prazo conta a partir do aceite, não da criação.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Compartilhamento ativo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleShareResponseDTO"
+              examples:
+                active:
+                  value:
+                    id: 31
+                    vehicleId: 12
+                    vehicleBrand: Fiat
+                    vehicleModel: Argo
+                    ownerId: 4
+                    ownerName: João Silva
+                    guestId: 9
+                    guestName: Maria Souza
+                    status: ACTIVE
+                    createdAt: "2026-10-14T09:12:44"
+                    respondedAt: "2026-10-14T10:03:10"
+                    expiresAt: "2026-10-21T10:03:10"
+        "400":
+          $ref: "#/components/responses/ShareNotPending"
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotGuest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/vehicle-shares/{id}/reject:
+    post:
+      tags: [VehicleShares]
+      summary: Convidado recusa o convite (PENDING → REJECTED)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Convite recusado (`respondedAt` preenchido, `expiresAt` null)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleShareResponseDTO"
+        "400":
+          $ref: "#/components/responses/ShareNotPending"
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotGuest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/vehicle-shares/{id}:
+    delete:
+      tags: [VehicleShares]
+      summary: Dono revoga o compartilhamento (qualquer status → REVOKED)
+      description: >-
+        Só o dono (`owner`) do compartilhamento. Não verifica o status atual: revogar
+        um compartilhamento já REJECTED/REVOKED também é aceito e sobrescreve
+        `respondedAt`. Não notifica o convidado.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "204":
+          description: Compartilhamento revogado
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/vehicle-shares/vehicle/{vehicleId}:
+    get:
+      tags: [VehicleShares]
+      summary: Compartilhamento corrente (PENDING ou ACTIVE) de um veículo do dono
+      description: >-
+        Retorna o mais recente com status PENDING ou ACTIVE. Não filtra por `expiresAt`:
+        um ACTIVE já vencido continua sendo retornado. Sem compartilhamento → 204 sem corpo.
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Compartilhamento corrente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleShareResponseDTO"
+        "204":
+          description: Veículo sem compartilhamento PENDING/ACTIVE
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/vehicle-shares/pending:
+    get:
+      tags: [VehicleShares]
+      summary: Convites PENDING recebidos pelo usuário autenticado
+      description: Lista não paginada, sem ordenação explícita.
+      responses:
+        "200":
+          description: Convites pendentes (pode ser vazio)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VehicleShareResponseDTO"
+        "401":
+          description: Não autenticado
+
+  /api/v1/vehicle-shares/active-for-me:
+    get:
+      tags: [VehicleShares]
+      summary: Veículos emprestados ao usuário autenticado (ACTIVE e não expirados)
+      description: Filtra `status = ACTIVE` e `expiresAt > now`. Lista não paginada.
+      responses:
+        "200":
+          description: Compartilhamentos ativos em que o usuário é convidado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VehicleShareResponseDTO"
+        "401":
+          description: Não autenticado
+
+  /api/v1/stations/nearby:
+    get:
+      tags: [Stations]
+      summary: Postos de combustível e estações de recarga próximos a uma coordenada
+      description: >-
+        Fluxo (StationService.findNearby): rate limit por usuário (10 req/min, compartilhado
+        com /stations/geocode) → cache Redis (chave `stations:nearby:{lat:.3f}:{lng:.3f}:{radius}`,
+        TTL 10 min) → Overpass API (postos FUEL) + Open Charge Map (estações ELECTRIC, máx. 20)
+        → distância Haversine → ordenação crescente por distância → cache put.
+        Se só um provedor falhar, retorna o resultado parcial (e o cacheia). Só falha (503)
+        se ambos falharem. Cache e rate limit são fail-open quando o Redis está indisponível.
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+          example: -23.55052
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+          example: -46.633308
+        - name: radius
+          in: query
+          required: false
+          description: Raio de busca em metros. Sem limite superior no código.
+          schema:
+            type: integer
+            minimum: 1
+            default: 5000
+      responses:
+        "200":
+          description: Postos ordenados por distância (pode ser vazio)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StationResponseDTO"
+              examples:
+                mixed:
+                  value:
+                    - placeId: "osm:node/1234567890"
+                      name: Posto Shell
+                      type: FUEL
+                      distanceMeters: 320
+                      rating: null
+                      latitude: -23.5521
+                      longitude: -46.6345
+                      street: Rua da Consolação
+                      houseNumber: "1200"
+                    - placeId: "ocm:98765"
+                      name: Eletroposto Shopping Center
+                      type: ELECTRIC
+                      distanceMeters: 1480
+                      rating: null
+                      latitude: -23.5612
+                      longitude: -46.6559
+                      street: Av. Paulista, 1000
+                      houseNumber: null
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          description: Não autenticado
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ExternalServiceUnavailable"
+
+  /api/v1/stations/geocode:
+    get:
+      tags: [Stations]
+      summary: Resolve texto livre (bairro/cidade) em coordenadas via Nominatim
+      description: >-
+        Fluxo (StationService.geocode): rate limit por usuário (10 req/min, mesmo bucket de
+        /stations/nearby) → rate limit global do Nominatim (1 req/s para toda a API,
+        consumido mesmo em cache hit) → cache Redis (chave `stations:geocode:{query normalizada}`,
+        TTL 7 dias) → Nominatim (`countrycodes=br`, `limit=5`). Resultado vazio também é cacheado.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 100
+          example: Pinheiros, São Paulo
+      responses:
+        "200":
+          description: Até 5 candidatos (pode ser vazio)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeocodeResultDTO"
+              examples:
+                default:
+                  value:
+                    - displayName: "Pinheiros, São Paulo, Região Imediata de São Paulo, São Paulo, Região Sudeste, Brasil"
+                      latitude: -23.5673
+                      longitude: -46.7019
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          description: Não autenticado
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ExternalServiceUnavailable"
+
+  /api/v1/exports/refuels:
+    get:
+      tags: [Exports]
+      summary: Exporta os abastecimentos de um veículo em CSV, XLSX ou PDF
+      description: >-
+        Somente o dono do veículo (convidado não exporta). `startDate`/`endDate` são
+        opcionais, mas devem vir juntos; sem eles exporta todo o histórico. Ordenação por
+        data desc. Colunas: Data, Combustível, Litros/kWh, Preço/unidade, Total, Odômetro.
+        CSV é UTF-8 com BOM e separador vírgula. O PDF inclui cabeçalho (título, veículo,
+        período) e resumo (total gasto, total abastecido, consumo médio, quantidade).
+        Nome do arquivo: `flowfuel-refuels-{marca-modelo}-{ano corrente}.{ext}`.
+      parameters:
+        - $ref: "#/components/parameters/exportVehicleId"
+        - $ref: "#/components/parameters/exportStartDate"
+        - $ref: "#/components/parameters/exportEndDate"
+        - $ref: "#/components/parameters/exportFormat"
+      responses:
+        "200":
+          $ref: "#/components/responses/ExportFile"
+        "400":
+          $ref: "#/components/responses/ExportBadRequest"
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/exports/events:
+    get:
+      tags: [Exports]
+      summary: Exporta os eventos de um veículo em CSV, XLSX ou PDF
+      description: >-
+        Mesmas regras de /exports/refuels, com filtro opcional `type`. Colunas: Data, Tipo,
+        Descrição, Valor, Odômetro. A descrição iniciada por `=`, `+`, `-` ou `@` recebe
+        prefixo `'` (proteção contra injeção de fórmula). O resumo do PDF traz total gasto,
+        quantidade de eventos e contagem por tipo.
+        Nome do arquivo: `flowfuel-events-{marca-modelo}-{ano corrente}.{ext}`.
+      parameters:
+        - $ref: "#/components/parameters/exportVehicleId"
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/VehicleEventType"
+        - $ref: "#/components/parameters/exportStartDate"
+        - $ref: "#/components/parameters/exportEndDate"
+        - $ref: "#/components/parameters/exportFormat"
+      responses:
+        "200":
+          $ref: "#/components/responses/ExportFile"
+        "400":
+          $ref: "#/components/responses/ExportBadRequest"
+        "401":
+          description: Não autenticado
+        "403":
+          $ref: "#/components/responses/ForbiddenNotOwner"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1205,6 +1620,41 @@ components:
         presente mas inválido/expirado → 401 AUTH_TOKEN_INVALID.
 
   parameters:
+    exportVehicleId:
+      name: vehicleId
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 12
+    exportStartDate:
+      name: startDate
+      in: query
+      required: false
+      description: Obrigatório se `endDate` for informado (e vice-versa). Inclusivo.
+      schema:
+        type: string
+        format: date
+      example: "2026-01-01"
+    exportEndDate:
+      name: endDate
+      in: query
+      required: false
+      description: Obrigatório se `startDate` for informado (e vice-versa). Inclusivo; não pode ser anterior a `startDate`.
+      schema:
+        type: string
+        format: date
+      example: "2026-06-30"
+    exportFormat:
+      name: format
+      in: query
+      required: true
+      description: Case-insensitive (`csv`, `CSV`, ` Pdf ` são aceitos — ExportFormat.fromString faz trim + upper).
+      schema:
+        type: string
+        enum: [CSV, XLSX, PDF]
+      example: CSV
     userId:
       name: userId
       in: path
@@ -1245,6 +1695,87 @@ components:
         example: createdAt,DESC
 
   responses:
+    ForbiddenNotGuest:
+      description: Usuário autenticado não é o convidado do compartilhamento
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            code: FORBIDDEN_OPERATION
+            status: 403
+            detail: Convite não pertence ao usuário
+    ShareNotPending:
+      description: Compartilhamento não está mais PENDING (já aceito, recusado ou revogado)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            code: BUSINESS_RULE_VIOLATED
+            status: 400
+            detail: Convite não está mais disponível
+    ExternalServiceUnavailable:
+      description: Provedor externo indisponível (ExternalServiceUnavailableException)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: https://flowfuel.app/errors/EXTERNAL_SERVICE_UNAVAILABLE
+            title: Serviço externo indisponível
+            status: 503
+            detail: Overpass e Open Charge Map indisponiveis
+            code: EXTERNAL_SERVICE_UNAVAILABLE
+    ExportFile:
+      description: >-
+        Arquivo binário com `Content-Disposition: attachment; filename="..."`.
+        O Content-Type depende de `format`.
+      headers:
+        Content-Disposition:
+          schema:
+            type: string
+          example: attachment; filename="flowfuel-refuels-fiat-argo-2026.csv"
+      content:
+        text/csv:
+          schema:
+            type: string
+            format: binary
+          example: "﻿Data,Combustível,Litros/kWh,Preço/unidade,Total,Odômetro\n10/10/2026,FUEL,40.00,5.89,235.60,45210"
+        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+          schema:
+            type: string
+            format: binary
+        application/pdf:
+          schema:
+            type: string
+            format: binary
+    ExportBadRequest:
+      description: >-
+        `format` inválido, só uma das datas informada, ou `startDate` > `endDate`
+        (ExportValidationException → VALIDATION_FAILED, sem `errors[]`). Parâmetro
+        obrigatório ausente (`vehicleId`, `format`) ou com tipo inválido (data/enum)
+        é tratado pelo handler padrão do Spring (ResponseEntityExceptionHandler) e
+        retorna um ProblemDetail sem os campos `code`/`timestamp`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            invalidFormat:
+              value:
+                type: https://flowfuel.app/errors/VALIDATION_FAILED
+                title: Validação falhou
+                status: 400
+                detail: "Formato de exportação inválido: docx"
+                code: VALIDATION_FAILED
+            partialRange:
+              value:
+                type: https://flowfuel.app/errors/VALIDATION_FAILED
+                title: Validação falhou
+                status: 400
+                detail: startDate e endDate devem ser informados juntos
+                code: VALIDATION_FAILED
     ValidationFailed:
       description: Falha de validação (bean validation / @Valid)
       content:
@@ -1340,6 +1871,7 @@ components:
             - CONFLICT
             - EMAIL_ALREADY_REGISTERED
             - RATE_LIMIT_EXCEEDED
+            - EXTERNAL_SERVICE_UNAVAILABLE
             - INTERNAL_ERROR
         timestamp:
           type: string
@@ -1828,3 +2360,130 @@ components:
         platform:
           type: string
           enum: [ANDROID]
+
+    VehicleShareStatus:
+      type: string
+      description: >-
+        `EXPIRED` existe no enum mas nenhum código o atribui; compartilhamentos vencidos
+        continuam ACTIVE no banco, com `expiresAt` no passado.
+      enum: [PENDING, ACTIVE, REJECTED, REVOKED, EXPIRED]
+    VehicleShareRequestDTO:
+      type: object
+      required: [vehicleId, inviteeEmail, durationDays]
+      properties:
+        vehicleId:
+          type: integer
+          format: int64
+          example: 12
+        inviteeEmail:
+          type: string
+          format: email
+          example: maria.souza@example.com
+        durationDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          example: 7
+    VehicleShareResponseDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 31
+        vehicleId:
+          type: integer
+          format: int64
+          example: 12
+        vehicleBrand:
+          type: string
+          example: Fiat
+        vehicleModel:
+          type: string
+          example: Argo
+        ownerId:
+          type: integer
+          format: int64
+          example: 4
+        ownerName:
+          type: string
+          example: João Silva
+        guestId:
+          type: integer
+          format: int64
+          example: 9
+        guestName:
+          type: string
+          example: Maria Souza
+        status:
+          $ref: "#/components/schemas/VehicleShareStatus"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-14T09:12:44"
+        respondedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: preenchido no aceite, recusa ou revogação
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: preenchido apenas no aceite (respondedAt + durationDays)
+    StationType:
+      type: string
+      enum: [FUEL, ELECTRIC]
+    StationResponseDTO:
+      type: object
+      properties:
+        placeId:
+          type: string
+          description: "`osm:{type}/{id}` (Overpass) ou `ocm:{id}` (Open Charge Map)"
+          example: "osm:node/1234567890"
+        name:
+          type: string
+          description: Fallback "Posto de combustível" / "Estação de recarga" quando o provedor não traz nome
+          example: Posto Shell
+        type:
+          $ref: "#/components/schemas/StationType"
+        distanceMeters:
+          type: integer
+          description: Distância Haversine a partir de (lat, lng) da requisição
+          example: 320
+        rating:
+          type: number
+          format: double
+          nullable: true
+          description: Sempre null hoje (nenhum provedor fornece avaliação)
+        latitude:
+          type: number
+          format: double
+          example: -23.5521
+        longitude:
+          type: number
+          format: double
+          example: -46.6345
+        street:
+          type: string
+          nullable: true
+          example: Rua da Consolação
+        houseNumber:
+          type: string
+          nullable: true
+          description: Só preenchido para postos FUEL (tag OSM `addr:housenumber`)
+          example: "1200"
+    GeocodeResultDTO:
+      type: object
+      properties:
+        displayName:
+          type: string
+          example: "Pinheiros, São Paulo, Região Sudeste, Brasil"
+        latitude:
+          type: number
+          format: double
+          example: -23.5673
+        longitude:
+          type: number
+          format: double
+          example: -46.7019
