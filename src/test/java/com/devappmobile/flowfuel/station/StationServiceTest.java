@@ -5,6 +5,7 @@ import com.devappmobile.flowfuel.exception.RateLimitExceededException;
 import com.devappmobile.flowfuel.station.client.NominatimClient;
 import com.devappmobile.flowfuel.station.client.OpenChargeMapClient;
 import com.devappmobile.flowfuel.station.client.OverpassClient;
+import com.devappmobile.flowfuel.station.client.google.GooglePlacesClient;
 import com.devappmobile.flowfuel.station.dto.GeocodeResultDTO;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import io.github.bucket4j.ConsumptionProbe;
@@ -39,13 +40,14 @@ class StationServiceTest {
     @Mock private BucketProxy bucketProxy;
     @Mock private NominatimClient nominatimClient;
     @Mock private GeocodeCacheService geocodeCacheService;
+    @Mock private GooglePlacesClient googlePlacesClient;
 
     private StationService stationService;
 
     @BeforeEach
     void setUp() {
         stationService = new StationService(overpassClient, openChargeMapClient, cacheService,
-                proxyManagerProvider, nominatimClient, geocodeCacheService);
+                proxyManagerProvider, nominatimClient, geocodeCacheService, googlePlacesClient);
     }
 
     private void stubRateLimitAllows() {

@@ -5,6 +5,7 @@ import com.devappmobile.flowfuel.exception.RateLimitExceededException;
 import com.devappmobile.flowfuel.station.client.NominatimClient;
 import com.devappmobile.flowfuel.station.client.OpenChargeMapClient;
 import com.devappmobile.flowfuel.station.client.OverpassClient;
+import com.devappmobile.flowfuel.station.client.google.GooglePlacesClient;
 import com.devappmobile.flowfuel.station.dto.GeocodeResultDTO;
 import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import io.github.bucket4j.Bandwidth;
@@ -49,16 +50,19 @@ public class StationService {
     private final ObjectProvider<ProxyManager<String>> proxyManagerProvider;
     private final NominatimClient nominatimClient;
     private final GeocodeCacheService geocodeCacheService;
+    private final GooglePlacesClient googlePlacesClient;
 
     public StationService(OverpassClient overpassClient, OpenChargeMapClient openChargeMapClient,
             StationCacheService cacheService, ObjectProvider<ProxyManager<String>> proxyManagerProvider,
-            NominatimClient nominatimClient, GeocodeCacheService geocodeCacheService) {
+            NominatimClient nominatimClient, GeocodeCacheService geocodeCacheService,
+            GooglePlacesClient googlePlacesClient) {
         this.overpassClient = overpassClient;
         this.openChargeMapClient = openChargeMapClient;
         this.cacheService = cacheService;
         this.proxyManagerProvider = proxyManagerProvider;
         this.nominatimClient = nominatimClient;
         this.geocodeCacheService = geocodeCacheService;
+        this.googlePlacesClient = googlePlacesClient;
     }
 
     public List<StationResponseDTO> findNearby(Long userId, double lat, double lng, int radiusMeters) {
@@ -118,6 +122,25 @@ public class StationService {
         List<GeocodeResultDTO> results = nominatimClient.search(query.trim());
         geocodeCacheService.put(cacheKey, results);
         return results;
+    }
+
+    public List<StationResponseDTO> findNearbyGoogle(Long userId, double lat, double lng, int radiusMeters) {
+        checkRateLimit(userId);
+
+        String cacheKey = "google:" + buildCacheKey(lat, lng, radiusMeters);
+        Optional<List<StationResponseDTO>> cached = cacheService.get(cacheKey);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+
+        List<StationResponseDTO> stations = googlePlacesClient.searchNearby(lat, lng, radiusMeters);
+
+        stations.forEach(station -> station.setDistanceMeters(
+                HaversineUtil.distanceMeters(lat, lng, station.getLatitude(), station.getLongitude())));
+        stations.sort(Comparator.comparing(StationResponseDTO::getDistanceMeters));
+
+        cacheService.put(cacheKey, stations);
+        return stations;
     }
 
     private void checkGeocodeGlobalRateLimit() {

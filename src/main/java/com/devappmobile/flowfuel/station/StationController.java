@@ -5,6 +5,7 @@ import com.devappmobile.flowfuel.station.dto.StationResponseDTO;
 import com.devappmobile.flowfuel.user.User;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -41,5 +42,14 @@ public class StationController {
             @AuthenticationPrincipal User user,
             @RequestParam @NotBlank @Size(min = 3, max = 100) String query) {
         return stationService.geocode(user.getId(), query);
+    }
+
+    @GetMapping("/nearby-google")
+    public List<StationResponseDTO> getNearbyStationsGoogle(
+            @AuthenticationPrincipal User user,
+            @RequestParam @NotNull @DecimalMin("-90") @DecimalMax("90") Double lat,
+            @RequestParam @NotNull @DecimalMin("-180") @DecimalMax("180") Double lng,
+            @RequestParam(defaultValue = "5000") @Positive @Max(50000) Integer radius) {
+        return stationService.findNearbyGoogle(user.getId(), lat, lng, radius);
     }
 }
