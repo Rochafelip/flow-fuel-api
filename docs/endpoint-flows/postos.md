@@ -103,3 +103,40 @@ Nota: `GlobalExceptionHandler` estende `ResponseEntityExceptionHandler`, que no 
 - Overpass e Open Charge Map são chamados em sequência, não em paralelo: a latência de cache miss é a soma das duas. `[descoberto no código]`
 - O `RestClient` não define timeout de conexão/leitura explícito; só a query Overpass tem `timeout:10` no lado do servidor. `[INFERIDO — depende dos defaults do RestClient.Builder]`
 - `ExternalServiceUnavailableException`/`EXTERNAL_SERVICE_UNAVAILABLE` não constava no enum `code` do `ProblemDetail` no OpenAPI; adicionado nesta revisão.
+
+## `GET /stations/nearby-google`
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant API as StationController
+    participant Svc as StationService
+    participant RL as bucket4j (Redis)
+    participant Cache as StationCacheService (Redis)
+    participant GPlaces as Google Places API
+
+    Client->>API: GET /stations/nearby-google?lat&lng&radius=5000
+    API->>API: @NotNull @DecimalMin/Max lat/lng, @Positive @Max(50000) radius [400]
+    API->>Svc: findNearbyGoogle(userId, lat, lng, radius)
+    Svc->>RL: bucket "station-rate-limit::{userId}" 10/min [429 + Retry-After]
+    Svc->>Cache: get "google:stations:nearby:{lat%.3f}:{lng%.3f}:{radius}"
+    alt cache hit
+        Cache-->>Svc: lista
+        Svc-->>Client: 200
+    else miss
+        Svc->>GPlaces: POST /v1/places:searchNearby (X-Goog-Api-Key, X-Goog-FieldMask)
+        Note over Svc: request body: location, includedTypes=[gas_station], maxResultCount=20, rankPreference=DISTANCE
+        alt sucesso
+            GPlaces-->>Svc: JSON com places[]
+            Svc->>Svc: mapear para StationResponseDTO (placeId prefixo "google:", type=FUEL)
+            Svc->>Svc: calcular distância Haversine
+            Svc->>Svc: ordenar por distância
+            Svc->>Cache: put (TTL 7 dias)
+            Svc-->>Client: 200
+        else falha (400/403/429/5xx/timeout)
+            Svc-->>Client: 503 EXTERNAL_SERVICE_UNAVAILABLE
+        end
+    end
+```
+
+Rate limit compartilhado com `/stations/nearby` (mesmo bucket `station-rate-limit::{userId}`). Cache prefixado com `google:` para evitar conflito. Sem fail-partial: se Google Places falhar, falha todo (503).

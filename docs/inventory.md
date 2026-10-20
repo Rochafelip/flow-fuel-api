@@ -54,6 +54,7 @@
 | GET | `/api/v1/vehicle-shares/active-for-me` | VehicleShareController | Sim | Veículos emprestados ao usuário |
 | GET | `/api/v1/stations/nearby` | StationController | Sim | Postos e eletropostos próximos (Overpass + Open Charge Map) |
 | GET | `/api/v1/stations/geocode` | StationController | Sim | Bairro/cidade → coordenadas (Nominatim) |
+| GET | `/api/v1/stations/nearby-google` | StationController | Sim | Postos de combustível próximos (Google Places API) |
 | GET | `/api/v1/exports/refuels` | ExportController | Sim (dono veículo) | Exporta abastecimentos (CSV/XLSX/PDF) |
 | GET | `/api/v1/exports/events` | ExportController | Sim (dono veículo) | Exporta eventos (CSV/XLSX/PDF) |
 | POST | `/api/v1/devices` | DeviceTokenController | Sim | Registra/reatribui token FCM do dispositivo |
@@ -104,6 +105,7 @@ Todos os tokens temporários (refresh, activation, password reset) seguem o padr
 | **Firebase Cloud Messaging** (`push/FirebasePushNotificationService.java`) | Push para os dispositivos do usuário (hoje só o convite de compartilhamento). Sem `PUSH_ENABLED=true` usa o stub `LoggingPushNotificationService` (só loga) | `PUSH_ENABLED` (default false), `PUSH_CREDENTIALS_FILE` ou `PUSH_CREDENTIALS_JSON` |
 | **Overpass API** (OSM) (`station/client/OverpassClient.java`) | Postos de combustível (`amenity=fuel`) num raio; pública, sem key | `OVERPASS_BASE_URL` |
 | **Open Charge Map** (`station/client/OpenChargeMapClient.java`) | Estações de recarga elétrica (máx. 20). Sem key, toda chamada falha (403) e só aparecem postos FUEL | `OPEN_CHARGE_MAP_BASE_URL`, `OPEN_CHARGE_MAP_API_KEY` |
+| **Google Places API (New)** (`station/client/google/GooglePlacesClient.java`) | Postos de combustível (máx. 20). Key obrigatória | `GOOGLE_PLACES_BASE_URL`, `GOOGLE_PLACES_API_KEY` |
 | **Nominatim** (OSM) (`station/client/NominatimClient.java`) | Geocodificação de texto livre, restrita ao Brasil (`countrycodes=br`, `limit=5`) | `NOMINATIM_BASE_URL` |
 | **Redis (cache de postos)** (`station/StationCacheService.java`, `station/GeocodeCacheService.java`) | Cache raw via a conexão Lettuce do rate limit: `nearby` TTL 10 min, `geocode` TTL 7 dias; fail-open | mesma `REDIS_URL` |
 

@@ -2487,3 +2487,69 @@ components:
           type: number
           format: double
           example: -46.7019
+
+  /api/v1/stations/nearby-google:
+    get:
+      tags: [Stations]
+      summary: Postos de combustível próximos via Google Places API
+      description: >-
+        Usa Google Places API (New) com Nearby Search para buscar postos de combustível.
+        Rate limit por usuário (10 req/min, compartilhado com /stations/nearby).
+        Cache Redis (chave `google:stations:nearby:{lat:.3f}:{lng:.3f}:{radius}`, TTL 7 dias).
+        Retorna até 20 resultados ordenados por distância.
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+          example: -23.55052
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+          example: -46.6333
+        - name: radius
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50000
+          example: 1000
+      responses:
+        "200":
+          description: Lista de postos de combustível (somente type FUEL)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StationResponseDTO"
+              examples:
+                default:
+                  value:
+                    - placeId: "google:ChIJp2M7XZ7XzpQRl-6aWjoFq0g"
+                      name: Posto Shell Paulista
+                      type: FUEL
+                      distanceMeters: 150
+                      rating: null
+                      latitude: -23.5505
+                      longitude: -46.6333
+                      street: Av. Paulista, 1000
+                      houseNumber: null
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          description: Não autenticado
+        "403":
+          description: Usuário não autorizado
+        "503":
+          $ref: "#/components/responses/ExternalServiceUnavailable"

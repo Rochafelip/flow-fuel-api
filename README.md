@@ -290,3 +290,13 @@ Pontos de atenção do ambiente atual:
 - DTOs usam Bean Validation (`@Valid`, `@NotBlank`, etc.).
 - `EnergyType` é uma enum — verifique os valores aceitos em [EnergyType.java](src/main/java/com/devappmobile/flowfuel/vehicle/EnergyType.java).
 - Os links para ADR-003 e ADR-008 acima apontam para `Claude/adr/`, que não existe atualmente no repositório `[INCONSISTÊNCIA — confirmar com time se os ADRs foram movidos/removidos]`.
+
+### Postos — `/api/stations` (requer JWT)
+
+|| Método | Path                              | Descrição                              |
+|| ------ | --------------------------------- | -------------------------------------- |
+|| GET    | `/nearby`                         | Postos e eletropostos (Overpass + OCM) |
+|| GET    | `/nearby-google`                   | Postos de combustível (Google Places)  |
+|| GET    | `/geocode`                        | Bairro/cidade → coordenadas (Nominatim) |
+
+O endpoint `/nearby-google` usa Google Places API (New) como alternativa ao Overpass API. Requer `GOOGLE_PLACES_API_KEY` configurada no ambiente (ver docs/deploy.md).

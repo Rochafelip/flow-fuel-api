@@ -56,7 +56,8 @@ flyctl secrets set \
   MAIL_USERNAME=flowfuelapp@gmail.com \
   MAIL_PASSWORD="<senha-de-app-do-gmail>" \
   MAIL_FROM="flowfuelapp@gmail.com" \
-  PASSWORD_RESET_LINK_BASE_URL="<url-do-frontend-em-producao>/reset-password"
+  PASSWORD_RESET_LINK_BASE_URL="<url-do-frontend-em-producao>/reset-password" \
+  GOOGLE_PLACES_API_KEY="<sua-key-do-google-places>"
 ```
 
 (`MAIL_PASSWORD` é uma "senha de app" do Google — requer verificação em duas etapas ativa na conta e é gerada em `myaccount.google.com/apppasswords`; não é a senha normal da conta. `PASSWORD_RESET_LINK_BASE_URL` é obrigatório em `prod`/`staging`: se ausente ou apontando para `localhost`, a aplicação falha o boot de propósito — ver `PasswordResetLinkValidator`.)
